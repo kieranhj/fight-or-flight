@@ -205,31 +205,31 @@ async function fetchUpstream(
   lat: number,
   lon: number,
   radiusNm: number,
-  rounds = 2,
 ): Promise<{ source: string; aircraft: RawAircraft[] }> {
   let lastError: unknown
-  // Try the whole primary→fallback chain up to `rounds` times to ride over a
-  // transient blip on both feeds (rate-limit / 5xx / dropped connection).
-  for (let round = 0; round < rounds; round++) {
-    for (const up of UPSTREAMS) {
-      try {
-        const res = await fetch(up.url(lat, lon, radiusNm), {
-          headers: {
-            Accept: 'application/json',
-            'User-Agent': 'fight-or-flight (+github.com/kieranhj/fight-or-flight)',
-          },
-          // Let Cloudflare cache the upstream briefly too.
-          cf: { cacheTtl: 8, cacheEverything: true },
-        })
-        if (!res.ok) {
-          lastError = new Error(`${up.source} HTTP ${res.status}`)
-          continue
-        }
-        const data = (await res.json()) as { ac?: RawAircraft[] }
-        return { source: up.source, aircraft: Array.isArray(data.ac) ? data.ac : [] }
-      } catch (err) {
-        lastError = err
+  // Responsible use: ONE attempt per feed, primary→fallback, no immediate retry.
+  // We never re-hit a feed that just failed (especially a 429) — when both blip,
+  // the caller serves the 5-minute stale copy instead of generating more load.
+  // Combined with the tap-only model (no polling) and the ~8s edge cache, this
+  // keeps us comfortably within airplanes.live's ~1 req/s, non-commercial terms.
+  for (const up of UPSTREAMS) {
+    try {
+      const res = await fetch(up.url(lat, lon, radiusNm), {
+        headers: {
+          Accept: 'application/json',
+          'User-Agent': 'fight-or-flight (+github.com/kieranhj/fight-or-flight)',
+        },
+        // Let Cloudflare cache the upstream briefly too, to dedupe load.
+        cf: { cacheTtl: 8, cacheEverything: true },
+      })
+      if (!res.ok) {
+        lastError = new Error(`${up.source} HTTP ${res.status}`)
+        continue
       }
+      const data = (await res.json()) as { ac?: RawAircraft[] }
+      return { source: up.source, aircraft: Array.isArray(data.ac) ? data.ac : [] }
+    } catch (err) {
+      lastError = err
     }
   }
   throw lastError ?? new Error('all upstreams failed')
