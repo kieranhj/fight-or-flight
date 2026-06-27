@@ -44,16 +44,14 @@ permission/timeout errors, feeds-unavailable / stale handling, and now offline.
   home lat (51.188) instead of device GPS (51.5); settings persist across reload;
   offline banner appears. No runtime errors. Settings panel screenshot captured.
 
-## Deferred — needs your input
+## Data accuracy follow-up (researched — see `DATA-RESEARCH.md`)
 
-These two from the plan (§6 / §11) need real-world data I shouldn't invent:
-
-1. **Farnborough exact weekday hours** — R1 still uses the `07:00–22:00`
-   placeholder. Verify against the **20/00871/REVPP** decision notice (Condition 8)
-   and I'll lock it in. The weekend `08:00–20:00` is already solid.
-2. **Real RNAV waypoints** for the Rwy 24 SIDs/STARs — R2/R3 use the rough seed
-   centreline. Give me the AIP coordinates (or say "go research them") and I'll
-   replace the seed geometry and tune the altitude/corridor thresholds.
-
-Everything else in Phase 6 is done; these are accuracy refinements that make the
-indicative flags sharper.
+1. **Farnborough hours — CONFIRMED ✅.** Weekdays 07:00–22:00; weekends/bank
+   holidays 08:00–20:00; no flying Christmas/Boxing Day — Condition 8 of
+   20/00871/REVPP, cross-checked against Rushmoor BC and the airport FAQ. The
+   config values already matched; the "placeholder/verify" caveat is removed.
+2. **Rwy 24 corridor — partially confirmed ⚠️.** SID names (GWC 2F / HAZEL 2F) and
+   the ≥4,000 ft over the A31 Hog's Back are confirmed; the exact RNAV **waypoint
+   coordinates** are in access-gated AIP/chart sources (403 to automated fetch) and
+   were **not** fabricated. The centreline stays a documented approximation —
+   replace with AIP fixes when available. R3 remains labelled indicative.
