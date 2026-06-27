@@ -3,12 +3,14 @@ import {
   flightTitle,
   flightSubtitle,
   formatAltitude,
+  formatAltitudeFt,
   formatSpeed,
   formatVerticalRate,
   formatDistance,
   formatBearing,
 } from '../lib/format'
 import { assessFlight } from '../lib/assess'
+import { useSettings } from './SettingsContext'
 import AirportTag from './AirportTag'
 import FlagBadge from './FlagBadge'
 
@@ -34,6 +36,7 @@ export default function FlightDetail({
 }) {
   const vs = formatVerticalRate(flight.verticalRateFpm)
   const { classification, flags } = assessFlight(flight)
+  const { units } = useSettings()
   const coords =
     flight.lat != null && flight.lon != null
       ? `${flight.lat.toFixed(4)}, ${flight.lon.toFixed(4)}`
@@ -92,20 +95,14 @@ export default function FlightDetail({
         )}
 
         <div className="grid grid-cols-2 gap-x-6">
-          <Row label="Distance" value={formatDistance(flight.distanceNm)} />
+          <Row label="Distance" value={formatDistance(flight.distanceNm, units.dist)} />
           <Row label="Bearing" value={formatBearing(flight.bearingDeg)} />
-          <Row label="Altitude (baro)" value={formatAltitude(flight)} />
-          <Row
-            label="Altitude (geom)"
-            value={flight.altGeomFt != null ? `${flight.altGeomFt.toLocaleString()} ft` : DASH}
-          />
-          <Row label="Ground speed" value={formatSpeed(flight.groundSpeedKt)} />
+          <Row label="Altitude (baro)" value={formatAltitude(flight, units.alt)} />
+          <Row label="Altitude (geom)" value={formatAltitudeFt(flight.altGeomFt, units.alt)} />
+          <Row label="Ground speed" value={formatSpeed(flight.groundSpeedKt, units.speed)} />
           <Row label="Vertical rate" value={vs.text} />
           <Row label="Track" value={flight.track != null ? `${Math.round(flight.track)}°` : DASH} />
-          <Row
-            label="Selected alt"
-            value={flight.navAltitudeFt != null ? `${flight.navAltitudeFt.toLocaleString()} ft` : DASH}
-          />
+          <Row label="Selected alt" value={formatAltitudeFt(flight.navAltitudeFt, units.alt)} />
           <Row label="Squawk" value={flight.squawk ?? DASH} />
           <Row label="Category" value={flight.category ?? DASH} />
           <Row label="Hex" value={flight.hex ? flight.hex.toUpperCase() : DASH} />

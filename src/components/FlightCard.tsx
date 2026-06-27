@@ -9,6 +9,7 @@ import {
   formatBearing,
 } from '../lib/format'
 import { assessFlight } from '../lib/assess'
+import { useSettings } from './SettingsContext'
 import AirportTag from './AirportTag'
 import FlagBadge from './FlagBadge'
 
@@ -37,6 +38,7 @@ export default function FlightCard({
     vs.dir === 'up' ? 'text-emerald-400' : vs.dir === 'down' ? 'text-amber-400' : 'text-slate-100'
   const arrow = vs.dir === 'up' ? '▲ ' : vs.dir === 'down' ? '▼ ' : ''
   const { classification, flags } = assessFlight(flight)
+  const { units } = useSettings()
 
   return (
     <li
@@ -58,15 +60,15 @@ export default function FlightCard({
         </div>
         <div className="shrink-0 text-right">
           <div className="text-base font-bold tabular-nums text-sky-400">
-            {formatDistance(flight.distanceNm)}
+            {formatDistance(flight.distanceNm, units.dist)}
           </div>
           <div className="text-xs text-slate-400">{formatBearing(flight.bearingDeg)}</div>
         </div>
       </div>
 
       <div className="grid grid-cols-3 gap-x-3 gap-y-2">
-        <Stat label="Altitude" value={formatAltitude(flight)} />
-        <Stat label="Speed" value={formatSpeed(flight.groundSpeedKt)} />
+        <Stat label="Altitude" value={formatAltitude(flight, units.alt)} />
+        <Stat label="Speed" value={formatSpeed(flight.groundSpeedKt, units.speed)} />
         <Stat label="Vert. rate" value={`${arrow}${vs.text}`} accent={vsAccent} />
       </div>
     </li>

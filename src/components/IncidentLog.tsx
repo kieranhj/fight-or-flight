@@ -6,7 +6,8 @@ import {
   incidentsToCsv,
   type Incident,
 } from '../lib/log'
-import { formatClock } from '../lib/format'
+import { formatClock, formatAltitudeFt, formatDistance } from '../lib/format'
+import { useSettings } from './SettingsContext'
 
 function severityDot(sev: string): string {
   return sev === 'breach' ? 'bg-rose-500' : sev === 'info' ? 'bg-sky-500' : 'bg-amber-500'
@@ -32,6 +33,7 @@ export default function IncidentLog({
   onChange?: () => void
 }) {
   const [incidents, setIncidents] = useState<Incident[]>(() => getIncidents())
+  const { units } = useSettings()
 
   function refresh() {
     setIncidents(getIncidents())
@@ -97,8 +99,8 @@ export default function IncidentLog({
                       </div>
                       <div className="mt-0.5 text-xs text-slate-400">
                         {new Date(i.loggedAt).toLocaleDateString()} {formatClock(i.loggedAt)} ·{' '}
-                        {i.altitudeFt != null ? `${i.altitudeFt.toLocaleString()} ft` : '—'} ·{' '}
-                        {i.distanceNm != null ? `${i.distanceNm.toFixed(1)} nm` : '—'}
+                        {formatAltitudeFt(i.altitudeFt, units.alt)} ·{' '}
+                        {formatDistance(i.distanceNm, units.dist)}
                       </div>
                       {i.flags.length > 0 && (
                         <div className="mt-1.5 flex flex-wrap gap-1.5">

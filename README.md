@@ -38,10 +38,14 @@ each phase's Definition of Done for review.
   (deterministic breach), R2 altitude-floor and R3 corridor (both indicative) over
   each classified flight; `FlagBadge` shows severity + a one-line why. See
   [`docs/PHASE-4-NOTES.md`](./docs/PHASE-4-NOTES.md).
-- **Phase 5 — Complaint generator + log: complete, pending review.** Two taps from a
-  flight prefill an editable complaint to the right authority (`mailto:` / copy +
-  deep link — never auto-submitted); each is saved to a localStorage incident log
-  with CSV export. See [`docs/PHASE-5-NOTES.md`](./docs/PHASE-5-NOTES.md).
+- **Phase 5 — Complaint generator + log: ✅ done.** Two taps from a flight prefill an
+  editable complaint to the right authority (`mailto:` / copy + deep link — never
+  auto-submitted); each is saved to a localStorage incident log with CSV export. See
+  [`docs/PHASE-5-NOTES.md`](./docs/PHASE-5-NOTES.md).
+- **Phase 6 — Polish: first pass complete, pending review.** Settings (N, radius,
+  units, home-location fallback, complainant details), offline handling, and
+  edge-state polish. Two accuracy items (Farnborough exact hours, real AIP corridor
+  waypoints) deferred pending data. See [`docs/PHASE-6-NOTES.md`](./docs/PHASE-6-NOTES.md).
 
 ## Develop
 
