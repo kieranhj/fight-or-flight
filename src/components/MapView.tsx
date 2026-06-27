@@ -100,11 +100,13 @@ function FitBounds({ points }: { points: L.LatLngExpression[] }) {
 export default function MapView({
   pos,
   flights,
+  trails = {},
   selectedHex,
   onSelect,
 }: {
   pos: GeoResult
   flights: NormalizedFlight[]
+  trails?: Record<string, [number, number][]>
   selectedHex: string | null
   onSelect: (f: NormalizedFlight) => void
 }) {
@@ -142,19 +144,31 @@ export default function MapView({
           pathOptions={{ color: '#0ea5e9', weight: 1, fillColor: '#0ea5e9', fillOpacity: 0.1 }}
         />
         <Marker position={[pos.lat, pos.lon]} icon={userIcon} />
-        {plotted.map((f) => (
-          <Marker
-            key={f.hex || `${f.callsign}-${f.lat}-${f.lon}`}
-            position={[f.lat, f.lon]}
-            icon={planeIcon(
-              f.track,
-              f.hex === selectedHex,
-              topSeverity(assessFlight(f).flags) === 'breach',
-            )}
-            zIndexOffset={f.hex === selectedHex ? 1000 : 0}
-            eventHandlers={{ click: () => onSelect(f) }}
-          />
-        ))}
+        {plotted.map((f) => {
+          const breach = topSeverity(assessFlight(f).flags) === 'breach'
+          const trail = f.hex ? trails[f.hex] : undefined
+          return (
+            <Fragment key={f.hex || `${f.callsign}-${f.lat}-${f.lon}`}>
+              {trail && trail.length >= 2 && (
+                <Polyline
+                  positions={trail}
+                  pathOptions={{
+                    color: breach ? '#fb7185' : '#94a3b8',
+                    weight: 2,
+                    opacity: 0.55,
+                    interactive: false,
+                  }}
+                />
+              )}
+              <Marker
+                position={[f.lat, f.lon]}
+                icon={planeIcon(f.track, f.hex === selectedHex, breach)}
+                zIndexOffset={f.hex === selectedHex ? 1000 : 0}
+                eventHandlers={{ click: () => onSelect(f) }}
+              />
+            </Fragment>
+          )
+        })}
         <FitBounds points={points} />
       </MapContainer>
       {corridorKinds.length > 0 && (
