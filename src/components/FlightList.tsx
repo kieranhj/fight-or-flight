@@ -1,13 +1,15 @@
-import type { NearbyResponse } from '../lib/adsb'
+import type { NearbyResponse, NormalizedFlight } from '../lib/adsb'
 import { formatClock } from '../lib/format'
 import FlightCard from './FlightCard'
 
 export default function FlightList({
   result,
   accuracyM,
+  onSelect,
 }: {
   result: NearbyResponse
   accuracyM?: number
+  onSelect?: (f: NormalizedFlight) => void
 }) {
   const { flights, query, source, generatedAt } = result
 
@@ -27,7 +29,11 @@ export default function FlightList({
     <div>
       <ul className="space-y-2">
         {flights.map((f) => (
-          <FlightCard key={f.hex || `${f.callsign}-${f.distanceNm}`} flight={f} />
+          <FlightCard
+            key={f.hex || `${f.callsign}-${f.distanceNm}`}
+            flight={f}
+            onSelect={onSelect}
+          />
         ))}
       </ul>
       <p className="mt-3 text-center text-[11px] leading-relaxed text-slate-500">

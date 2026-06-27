@@ -1,20 +1,26 @@
 import { useRef, useState } from 'react'
 import NearbyButton, { type NearbyStatus } from './components/NearbyButton'
 import FlightList from './components/FlightList'
-import { fetchNearby, type NearbyResponse } from './lib/adsb'
-import { getCurrentPosition } from './lib/geolocation'
+import MapView from './components/MapView'
+import FlightDetail from './components/FlightDetail'
+import { fetchNearby, type NearbyResponse, type NormalizedFlight } from './lib/adsb'
+import { getCurrentPosition, type GeoResult } from './lib/geolocation'
 
 const CONSTRAINTS = [
   'Telemetry comes from free, volunteer ADS-B feeds — no uptime guarantee, and very low or masked aircraft can be missed.',
-  'The list is filtered to fixed-wing jets; military, rotorcraft and light GA are removed.',
+  'The list is filtered to airborne fixed-wing jets; military, rotorcraft, light GA and on-ground traffic are removed.',
   'Rule flags (which airport, possible breaches) arrive in later phases — this phase just identifies what’s overhead.',
 ]
+
+type View = 'list' | 'map'
 
 export default function App() {
   const [status, setStatus] = useState<NearbyStatus>('idle')
   const [result, setResult] = useState<NearbyResponse | null>(null)
-  const [accuracyM, setAccuracyM] = useState<number | undefined>(undefined)
+  const [pos, setPos] = useState<GeoResult | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [view, setView] = useState<View>('list')
+  const [selected, setSelected] = useState<NormalizedFlight | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
   async function identify() {
@@ -22,12 +28,13 @@ export default function App() {
     const ac = new AbortController()
     abortRef.current = ac
     setError(null)
+    setSelected(null)
     setStatus('locating')
     try {
-      const pos = await getCurrentPosition()
-      setAccuracyM(pos.accuracyM)
+      const p = await getCurrentPosition()
+      setPos(p)
       setStatus('loading')
-      const res = await fetchNearby({ lat: pos.lat, lon: pos.lon, signal: ac.signal })
+      const res = await fetchNearby({ lat: p.lat, lon: p.lon, signal: ac.signal })
       if (ac.signal.aborted) return
       setResult(res)
       setStatus('ready')
@@ -37,6 +44,8 @@ export default function App() {
       setStatus('error')
     }
   }
+
+  const hasResults = result != null && status !== 'error'
 
   return (
     <div className="min-h-full bg-slate-900 text-slate-100">
@@ -61,9 +70,33 @@ export default function App() {
           )}
         </div>
 
+        {hasResults && (
+          <div className="mt-4 flex rounded-lg border border-slate-700 bg-slate-800/50 p-1 text-sm font-medium">
+            {(['list', 'map'] as const).map((v) => (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                className={`flex-1 rounded-md py-1.5 capitalize transition ${
+                  view === v ? 'bg-sky-500 text-white' : 'text-slate-400'
+                }`}
+              >
+                {v}
+              </button>
+            ))}
+          </div>
+        )}
+
         <main className="mt-4 flex-1">
-          {result && status !== 'error' && (
-            <FlightList result={result} accuracyM={accuracyM} />
+          {hasResults && view === 'list' && (
+            <FlightList result={result} accuracyM={pos?.accuracyM} onSelect={setSelected} />
+          )}
+          {hasResults && view === 'map' && pos && (
+            <MapView
+              pos={pos}
+              flights={result.flights}
+              selectedHex={selected?.hex ?? null}
+              onSelect={setSelected}
+            />
           )}
         </main>
 
@@ -80,10 +113,13 @@ export default function App() {
             ))}
           </ul>
           <p className="mt-3 text-[11px] text-slate-600">
-            Data via airplanes.live / adsb.lol, used under their non-commercial terms.
+            Data via airplanes.live / adsb.lol; map © OpenStreetMap contributors. Used under their
+            terms.
           </p>
         </footer>
       </div>
+
+      {selected && <FlightDetail flight={selected} onClose={() => setSelected(null)} />}
     </div>
   )
 }
