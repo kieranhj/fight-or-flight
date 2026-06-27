@@ -74,7 +74,7 @@ export default function ComplaintModal({
   return (
     <div className="fixed inset-0 z-[1100] flex items-end justify-center bg-black/60" onClick={onClose}>
       <div
-        className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-2xl border-t border-slate-700 bg-slate-900 p-4 pb-8 shadow-2xl"
+        className="max-h-[92vh] w-full max-w-md overflow-y-auto overscroll-contain rounded-t-2xl border-t border-slate-700 bg-slate-900 p-4 pb-8 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-label="Generate complaint"

@@ -48,7 +48,7 @@ export default function FlightDetail({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-t-2xl border-t border-slate-700 bg-slate-900 p-4 pb-8 shadow-2xl"
+        className="max-h-[92vh] w-full max-w-md overflow-y-auto overscroll-contain rounded-t-2xl border-t border-slate-700 bg-slate-900 p-4 pb-8 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-label={`Details for ${flightTitle(flight)}`}
