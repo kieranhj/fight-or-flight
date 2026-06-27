@@ -22,6 +22,8 @@ export type NormalizedFlight = {
   distanceNm: number | null
   /** Bearing from the query point in degrees (`dir`). */
   bearingDeg: number | null
+  /** True when the feed reported `alt_baro: "ground"`. */
+  onGround: boolean
 }
 
 export type NearbyResponse = {
