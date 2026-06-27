@@ -36,7 +36,12 @@ export default function FlightList({
           />
         ))}
       </ul>
-      <p className="mt-3 text-center text-[11px] leading-relaxed text-slate-500">
+      {result.stale && (
+        <p className="mt-3 text-center text-[11px] font-medium text-amber-400/90">
+          Feeds momentarily unavailable — showing last good data.
+        </p>
+      )}
+      <p className="mt-1 text-center text-[11px] leading-relaxed text-slate-500">
         {flights.length} aircraft within {query.radiusNm} nm
         {accuracyM != null && ` · location ±${Math.round(accuracyM)} m`} · via {source} · updated{' '}
         {formatClock(generatedAt)}
