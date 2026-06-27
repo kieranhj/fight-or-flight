@@ -8,6 +8,8 @@ import {
   formatDistance,
   formatBearing,
 } from '../lib/format'
+import { classifyFlight } from '../lib/classify'
+import AirportTag from './AirportTag'
 
 const DASH = '—'
 
@@ -28,6 +30,7 @@ export default function FlightDetail({
   onClose: () => void
 }) {
   const vs = formatVerticalRate(flight.verticalRateFpm)
+  const classification = classifyFlight(flight)
   const coords =
     flight.lat != null && flight.lon != null
       ? `${flight.lat.toFixed(4)}, ${flight.lon.toFixed(4)}`
@@ -58,6 +61,16 @@ export default function FlightDetail({
           </button>
         </div>
 
+        <div className="mb-3 rounded-lg border border-slate-800 bg-slate-800/40 p-2.5">
+          <div className="mb-1 flex items-center gap-2">
+            <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">
+              Likely airport
+            </span>
+            <AirportTag classification={classification} />
+          </div>
+          <p className="text-xs leading-relaxed text-slate-400">{classification.reason}</p>
+        </div>
+
         <div className="grid grid-cols-2 gap-x-6">
           <Row label="Distance" value={formatDistance(flight.distanceNm)} />
           <Row label="Bearing" value={formatBearing(flight.bearingDeg)} />
@@ -77,6 +90,14 @@ export default function FlightDetail({
           <Row label="Category" value={flight.category ?? DASH} />
           <Row label="Hex" value={flight.hex ? flight.hex.toUpperCase() : DASH} />
           <Row label="Position" value={coords} />
+          <Row
+            label="Route"
+            value={
+              flight.route
+                ? `${flight.route.originLabel ?? '?'} → ${flight.route.destinationLabel ?? '?'}`
+                : DASH
+            }
+          />
         </div>
 
         <p className="mt-3 text-[11px] leading-relaxed text-slate-500">

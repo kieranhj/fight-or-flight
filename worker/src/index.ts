@@ -26,6 +26,14 @@ const EXCLUDE_ON_GROUND = true // app is about overhead noise; drop parked/taxii
 const EXCLUDED_TYPE_CODES = new Set<string>([]) // e.g. add light-GA ICAO type codes
 
 // ── Normalized output shape (mirror of src/lib/adsb.ts NormalizedFlight) ─────
+type FlightRoute = {
+  originIcao: string | null
+  destinationIcao: string | null
+  /** Short display label (IATA or name) for origin/destination, when available. */
+  originLabel: string | null
+  destinationLabel: string | null
+}
+
 type NormalizedFlight = {
   hex: string
   callsign: string | null
@@ -44,6 +52,8 @@ type NormalizedFlight = {
   distanceNm: number | null
   bearingDeg: number | null
   onGround: boolean
+  /** Origin/destination from adsb.lol routeset; null when unknown. */
+  route: FlightRoute | null
 }
 
 /** Loose shape of an ADSBExchange-v2 aircraft record (airplanes.live / adsb.lol). */
@@ -118,6 +128,70 @@ function normalize(ac: RawAircraft): NormalizedFlight {
     distanceNm: num(ac.dst),
     bearingDeg: num(ac.dir),
     onGround,
+    route: null, // filled in by enrichRoutes() after sort/trim
+  }
+}
+
+// ── Route enrichment (adsb.lol routeset) ─────────────────────────────────────
+type RoutesetAirport = { icao?: string; iata?: string; name?: string }
+type RoutesetItem = {
+  callsign?: string
+  plane_found?: boolean
+  _airports?: RoutesetAirport[]
+}
+
+function airportLabel(a: RoutesetAirport | undefined): string | null {
+  if (!a) return null
+  return a.iata ?? a.name ?? a.icao ?? null
+}
+
+/**
+ * Look up origin/destination for the given flights in one batched routeset call.
+ * Best-effort: any failure leaves routes null rather than failing the request.
+ * Mutates `flights` in place (only those with a callsign and a position).
+ */
+async function enrichRoutes(flights: NormalizedFlight[]): Promise<void> {
+  const planes = flights
+    .filter((f) => f.callsign && f.lat != null && f.lon != null)
+    .map((f) => ({ callsign: f.callsign as string, lat: f.lat as number, lng: f.lon as number }))
+  if (planes.length === 0) return
+
+  let items: RoutesetItem[]
+  try {
+    const res = await fetch('https://api.adsb.lol/api/0/routeset', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'User-Agent': 'aircraft-complaint-assistant (+github.com/kieranhj/fight-or-flight)',
+      },
+      body: JSON.stringify({ planes }),
+    })
+    if (!res.ok) return
+    items = (await res.json()) as RoutesetItem[]
+  } catch {
+    return
+  }
+  if (!Array.isArray(items)) return
+
+  const byCallsign = new Map<string, RoutesetItem>()
+  for (const it of items) {
+    if (it.callsign) byCallsign.set(it.callsign.trim(), it)
+  }
+
+  for (const f of flights) {
+    if (!f.callsign) continue
+    const it = byCallsign.get(f.callsign)
+    const airports = it?._airports
+    if (!it?.plane_found || !airports || airports.length === 0) continue
+    const origin = airports[0]
+    const destination = airports[airports.length - 1]
+    f.route = {
+      originIcao: origin?.icao ?? null,
+      destinationIcao: destination?.icao ?? null,
+      originLabel: airportLabel(origin),
+      destinationLabel: airportLabel(destination),
+    }
   }
 }
 
@@ -208,6 +282,9 @@ async function handleNearby(url: URL, env: Env, ctx: ExecutionContext): Promise<
       return a.distanceNm - b.distanceNm
     })
     .slice(0, n)
+
+  // Enrich only the trimmed list (≤ n) with route data — one batched call.
+  await enrichRoutes(flights)
 
   const res = json(
     {
