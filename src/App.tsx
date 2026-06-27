@@ -3,8 +3,11 @@ import NearbyButton, { type NearbyStatus } from './components/NearbyButton'
 import FlightList from './components/FlightList'
 import MapView from './components/MapView'
 import FlightDetail from './components/FlightDetail'
+import ComplaintModal from './components/ComplaintModal'
+import IncidentLog from './components/IncidentLog'
 import { fetchNearby, type NearbyResponse, type NormalizedFlight } from './lib/adsb'
 import { getCurrentPosition, type GeoResult } from './lib/geolocation'
+import { incidentCount } from './lib/log'
 
 const CONSTRAINTS = [
   'Telemetry comes from free, volunteer ADS-B feeds — no uptime guarantee, and very low or masked aircraft can be missed.',
@@ -21,6 +24,9 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   const [view, setView] = useState<View>('list')
   const [selected, setSelected] = useState<NormalizedFlight | null>(null)
+  const [complaintFor, setComplaintFor] = useState<NormalizedFlight | null>(null)
+  const [showLog, setShowLog] = useState(false)
+  const [logCount, setLogCount] = useState(() => incidentCount())
   const abortRef = useRef<AbortController | null>(null)
 
   async function identify() {
@@ -50,11 +56,19 @@ export default function App() {
   return (
     <div className="min-h-full bg-slate-900 text-slate-100">
       <div className="mx-auto flex min-h-full max-w-md flex-col px-4 py-6">
-        <header className="mb-5">
-          <h1 className="text-xl font-bold">Fight or Flight</h1>
-          <p className="mt-1 text-sm text-slate-400">
-            Tap to see the aircraft overhead and their telemetry.
-          </p>
+        <header className="mb-5 flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-bold">Fight or Flight</h1>
+            <p className="mt-1 text-sm text-slate-400">
+              Tap to see the aircraft overhead and their telemetry.
+            </p>
+          </div>
+          <button
+            onClick={() => setShowLog(true)}
+            className="shrink-0 rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-300"
+          >
+            Log{logCount > 0 ? ` (${logCount})` : ''}
+          </button>
         </header>
 
         <NearbyButton status={status} onClick={identify} />
@@ -119,7 +133,32 @@ export default function App() {
         </footer>
       </div>
 
-      {selected && <FlightDetail flight={selected} onClose={() => setSelected(null)} />}
+      {selected && (
+        <FlightDetail
+          flight={selected}
+          onClose={() => setSelected(null)}
+          onComplain={(f) => {
+            setSelected(null)
+            setComplaintFor(f)
+          }}
+        />
+      )}
+
+      {complaintFor && (
+        <ComplaintModal
+          flight={complaintFor}
+          observedAt={result?.generatedAt ?? Date.now()}
+          onClose={() => setComplaintFor(null)}
+          onLogged={() => setLogCount(incidentCount())}
+        />
+      )}
+
+      {showLog && (
+        <IncidentLog
+          onClose={() => setShowLog(false)}
+          onChange={() => setLogCount(incidentCount())}
+        />
+      )}
     </div>
   )
 }
