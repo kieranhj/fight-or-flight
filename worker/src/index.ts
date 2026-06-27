@@ -207,6 +207,11 @@ async function fetchUpstream(
   radiusNm: number,
 ): Promise<{ source: string; aircraft: RawAircraft[] }> {
   let lastError: unknown
+  // Responsible use: ONE attempt per feed, primary→fallback, no immediate retry.
+  // We never re-hit a feed that just failed (especially a 429) — when both blip,
+  // the caller serves the 5-minute stale copy instead of generating more load.
+  // Combined with the tap-only model (no polling) and the ~8s edge cache, this
+  // keeps us comfortably within airplanes.live's ~1 req/s, non-commercial terms.
   for (const up of UPSTREAMS) {
     try {
       const res = await fetch(up.url(lat, lon, radiusNm), {
@@ -214,7 +219,7 @@ async function fetchUpstream(
           Accept: 'application/json',
           'User-Agent': 'fight-or-flight (+github.com/kieranhj/fight-or-flight)',
         },
-        // Let Cloudflare cache the upstream briefly too.
+        // Let Cloudflare cache the upstream briefly too, to dedupe load.
         cf: { cacheTtl: 8, cacheEverything: true },
       })
       if (!res.ok) {
@@ -254,9 +259,10 @@ async function handleNearby(url: URL, env: Env, ctx: ExecutionContext): Promise<
   // Canonical cache key: round the position so nearby taps share a cached result.
   const rLat = lat.toFixed(3)
   const rLon = lon.toFixed(3)
-  const cacheKey = new Request(
-    `https://cache.local/api/nearby?lat=${rLat}&lon=${rLon}&radius=${radiusNm}&n=${n}`,
-  )
+  const baseKey = `https://cache.local/api/nearby?lat=${rLat}&lon=${rLon}&radius=${radiusNm}&n=${n}`
+  const cacheKey = new Request(baseKey)
+  // Longer-lived copy of the last good result, served if the feeds blip.
+  const staleKey = new Request(`${baseKey}&stale=1`)
   const cache = caches.default
   const cached = await cache.match(cacheKey)
   if (cached) return cached
@@ -265,6 +271,13 @@ async function handleNearby(url: URL, env: Env, ctx: ExecutionContext): Promise<
   try {
     upstream = await fetchUpstream(lat, lon, radiusNm)
   } catch (err) {
+    // Stale-on-error: return the last good data (≤ 5 min old) rather than a 502.
+    const stale = await cache.match(staleKey)
+    if (stale) {
+      const data = (await stale.json()) as Record<string, unknown>
+      data.stale = true
+      return json(data, env, 200, 0)
+    }
     return json(
       { error: 'Upstream ADS-B feeds are unavailable', detail: String(err) },
       env,
@@ -286,18 +299,17 @@ async function handleNearby(url: URL, env: Env, ctx: ExecutionContext): Promise<
   // Enrich only the trimmed list (≤ n) with route data — one batched call.
   await enrichRoutes(flights)
 
-  const res = json(
-    {
-      query: { lat, lon, radiusNm, n },
-      source: upstream.source,
-      generatedAt: Date.now(),
-      flights,
-    },
-    env,
-    200,
-    8,
-  )
+  const payload = {
+    query: { lat, lon, radiusNm, n },
+    source: upstream.source,
+    generatedAt: Date.now(),
+    stale: false,
+    flights,
+  }
+  const res = json(payload, env, 200, 8)
   ctx.waitUntil(cache.put(cacheKey, res.clone()))
+  // Keep a 5-minute stale copy for the error path above.
+  ctx.waitUntil(cache.put(staleKey, json(payload, env, 200, 300)))
   return res
 }
 

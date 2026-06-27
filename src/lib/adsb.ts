@@ -43,6 +43,8 @@ export type NearbyResponse = {
   source: string
   /** Server timestamp (ms epoch). */
   generatedAt: number
+  /** True when the feeds momentarily failed and the Worker served last-good data. */
+  stale?: boolean
   flights: NormalizedFlight[]
 }
 
@@ -70,7 +72,12 @@ export async function fetchNearby({
 
   const res = await fetch(url, { signal })
   if (!res.ok) {
-    throw new Error(`Worker /api/nearby returned ${res.status} ${res.statusText}`)
+    // 5xx ⇒ the upstream ADS-B feeds are momentarily unavailable (rate-limit /
+    // outage) and even the Worker's last-good cache was empty. Keep it friendly.
+    if (res.status >= 500) {
+      throw new Error('The aircraft feeds are momentarily unavailable. Tap to try again.')
+    }
+    throw new Error(`Request failed (${res.status}).`)
   }
   return (await res.json()) as NearbyResponse
 }
