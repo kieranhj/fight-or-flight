@@ -1,5 +1,5 @@
 /**
- * Aircraft Complaint Assistant — Cloudflare Worker data proxy.
+ * Fight or Flight — Cloudflare Worker data proxy.
  *
  * `GET /api/nearby?lat&lon&radius&n`
  *   1. calls api.airplanes.live point endpoint (fallback: api.adsb.lol),
@@ -163,7 +163,7 @@ async function enrichRoutes(flights: NormalizedFlight[]): Promise<void> {
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
-        'User-Agent': 'aircraft-complaint-assistant (+github.com/kieranhj/fight-or-flight)',
+        'User-Agent': 'fight-or-flight (+github.com/kieranhj/fight-or-flight)',
       },
       body: JSON.stringify({ planes }),
     })
@@ -212,7 +212,7 @@ async function fetchUpstream(
       const res = await fetch(up.url(lat, lon, radiusNm), {
         headers: {
           Accept: 'application/json',
-          'User-Agent': 'aircraft-complaint-assistant (+github.com/kieranhj/fight-or-flight)',
+          'User-Agent': 'fight-or-flight (+github.com/kieranhj/fight-or-flight)',
         },
         // Let Cloudflare cache the upstream briefly too.
         cf: { cacheTtl: 8, cacheEverything: true },

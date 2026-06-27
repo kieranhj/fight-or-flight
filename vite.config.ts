@@ -15,8 +15,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
       manifest: {
-        name: 'Aircraft Complaint Assistant',
-        short_name: 'AircraftComplaint',
+        name: 'Fight or Flight',
+        short_name: 'Fight or Flight',
         description:
           'Identify the nearest aircraft, flag possible local-rule breaches, and prefill a complaint to the right authority.',
         theme_color: '#0f172a',

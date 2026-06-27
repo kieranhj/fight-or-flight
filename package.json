@@ -1,9 +1,9 @@
 {
-  "name": "aircraft-complaint-assistant",
+  "name": "fight-or-flight",
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "Mobile-first PWA that identifies the nearest aircraft, flags possible local-rule breaches, and prefills a complaint to the right authority.",
+  "description": "Fight or Flight — mobile-first PWA that identifies the nearest aircraft, flags possible local-rule breaches, and prefills a complaint to the right authority.",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

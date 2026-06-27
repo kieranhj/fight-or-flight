@@ -1,4 +1,4 @@
-# Worker — Aircraft Complaint Assistant data proxy
+# Worker — Fight or Flight data proxy
 
 A thin Cloudflare Worker that the front-end talks to instead of calling ADS-B
 feeds directly. It solves CORS, smooths upstream rate limits via short caching,
