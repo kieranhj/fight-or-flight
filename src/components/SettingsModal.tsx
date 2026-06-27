@@ -56,6 +56,8 @@ export default function SettingsModal({
   const set = (patch: Partial<Settings>) => onChange({ ...settings, ...patch })
   const setUnit = (patch: Partial<Settings['units']>) =>
     onChange({ ...settings, units: { ...settings.units, ...patch } })
+  const setInclude = (patch: Partial<Settings['include']>) =>
+    onChange({ ...settings, include: { ...settings.include, ...patch } })
   const updateDetail = (key: keyof UserDetails, value: string) => {
     const next = { ...details, [key]: value }
     setDetails(next)
@@ -123,6 +125,35 @@ export default function SettingsModal({
                 onChange={(speed) => setUnit({ speed })}
               />
             </div>
+          </Field>
+
+          <Field label="Show usually-filtered traffic">
+            <div className="space-y-1.5">
+              {(
+                [
+                  { key: 'military', label: 'Military' },
+                  { key: 'rotorcraft', label: 'Helicopters' },
+                  { key: 'light', label: 'Light aircraft' },
+                ] as const
+              ).map((opt) => (
+                <label
+                  key={opt.key}
+                  className="flex items-center gap-2 text-sm text-slate-300"
+                >
+                  <input
+                    type="checkbox"
+                    checked={settings.include[opt.key]}
+                    onChange={(e) => setInclude({ [opt.key]: e.target.checked })}
+                    className="accent-sky-500"
+                  />
+                  {opt.label}
+                </label>
+              ))}
+            </div>
+            <p className="mt-1.5 text-[11px] text-slate-500">
+              Off by default. Re-run after changing. These categories are usually filtered out as
+              they’re not the airliner/biz-jet traffic the app is about.
+            </p>
           </Field>
 
           <Field label="Location">
