@@ -229,6 +229,71 @@ function adsbdbLabel(a: AdsbdbAirport | undefined): string | null {
   return a.iata_code ?? a.municipality ?? a.name ?? a.icao_code ?? null
 }
 
+// ── Airport name resolution (ICAO → IATA / city name, via hexdb) ─────────────
+type AirportMeta = { iata: string | null; name: string | null }
+const AIRPORT_CACHE_TTL = 2_592_000 // 30 days — airports are static
+
+/** Friendly "City Name (IATA)" label, falling back to IATA then ICAO. */
+function friendlyLabel(icao: string | null, m: AirportMeta): string | null {
+  const name = m.name ? m.name.replace(/\s+(International\s+)?Airport$/i, '').trim() : null
+  if (name && m.iata) return `${name} (${m.iata})`
+  return m.iata ?? name ?? icao
+}
+
+// In-isolate memo so one tap doesn't re-fetch a hub that several flights share.
+const airportMemo = new Map<string, AirportMeta>()
+
+async function resolveAirport(icao: string, ctx: ExecutionContext): Promise<AirportMeta> {
+  const code = icao.trim().toUpperCase()
+  if (!code) return { iata: null, name: null }
+  const memo = airportMemo.get(code)
+  if (memo) return memo
+  const cache = caches.default
+  const key = new Request(`https://cache.local/airport/${encodeURIComponent(code)}`)
+  const hit = await cache.match(key)
+  if (hit) {
+    const meta = (await hit.json()) as AirportMeta
+    airportMemo.set(code, meta)
+    return meta
+  }
+
+  let meta: AirportMeta = { iata: null, name: null }
+  try {
+    const res = await fetch(`https://hexdb.io/api/v1/airport/icao/${encodeURIComponent(code)}`, {
+      headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
+    })
+    if (res.ok) {
+      const a = (await res.json()) as { iata?: string; airport?: string }
+      meta = { iata: a.iata?.trim() || null, name: a.airport?.trim() || null }
+    } else if (res.status !== 404) {
+      return meta // transient — don't cache, allow a later retry
+    }
+  } catch {
+    return meta
+  }
+  airportMemo.set(code, meta)
+  ctx.waitUntil(
+    cache.put(
+      key,
+      new Response(JSON.stringify(meta), {
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${AIRPORT_CACHE_TTL}` },
+      }),
+    ),
+  )
+  return meta
+}
+
+/** Replace a route's ICAO labels with friendly IATA / city names (in place). */
+async function labelRoute(route: FlightRoute, ctx: ExecutionContext): Promise<void> {
+  const blank: AirportMeta = { iata: null, name: null }
+  const [o, d] = await Promise.all([
+    route.originIcao ? resolveAirport(route.originIcao, ctx) : Promise.resolve(blank),
+    route.destinationIcao ? resolveAirport(route.destinationIcao, ctx) : Promise.resolve(blank),
+  ])
+  route.originLabel = friendlyLabel(route.originIcao, o)
+  route.destinationLabel = friendlyLabel(route.destinationIcao, d)
+}
+
 type RouteResult = { route: FlightRoute | null; rateLimited: boolean }
 
 /** Look up one callsign's route via ROUTE_PROVIDER, with caching + 429 backoff. */
@@ -260,6 +325,8 @@ async function lookupRoute(callsign: string, ctx: ExecutionContext): Promise<Rou
   // 200 with a route → cache long; 200/404 with none → cache short; other → don't cache.
   const ok2xx = hitData.status >= 200 && hitData.status < 300
   if (!ok2xx && hitData.status !== 404) return { route: null, rateLimited: false }
+  // Resolve ICAO codes → friendly IATA / city-name labels (cached hard).
+  if (hitData.route) await labelRoute(hitData.route, ctx)
   const ttl = hitData.route ? ROUTE_CACHE_TTL : ROUTE_NEG_TTL
   ctx.waitUntil(
     cache.put(
@@ -445,6 +512,30 @@ export default {
         }),
       )
       return json({ callsign: target, active: ROUTE_PROVIDER, providers: results }, env)
+    }
+
+    // Diagnostic: GET /api/airport?icao=EGLL → raw hexdb airport lookup + parsed label.
+    if (url.pathname === '/api/airport') {
+      const icao = url.searchParams.get('icao')
+      if (!icao) return json({ error: 'icao query param required' }, env, 400)
+      const code = icao.trim().toUpperCase()
+      const upstream = `https://hexdb.io/api/v1/airport/icao/${encodeURIComponent(code)}`
+      try {
+        const res = await fetch(upstream, {
+          headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
+        })
+        const body = await res.text()
+        let label: string | null = code
+        try {
+          const a = JSON.parse(body) as { iata?: string; airport?: string }
+          label = friendlyLabel(code, { iata: a.iata?.trim() || null, name: a.airport?.trim() || null })
+        } catch {
+          /* body shown below */
+        }
+        return json({ icao: code, upstream, status: res.status, label, bodySample: body.slice(0, 400) }, env)
+      } catch (err) {
+        return json({ icao: code, upstream, error: String(err) }, env, 502)
+      }
     }
 
     if (url.pathname === '/' || url.pathname === '/health') {
