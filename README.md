@@ -1,4 +1,4 @@
-# fight-or-flight — Aircraft Complaint Assistant
+# Fight or Flight
 
 A mobile-first PWA that, on one tap, lists the nearest aircraft to your location,
 shows their telemetry, flags any that look outside the local rules (Farnborough /

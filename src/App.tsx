@@ -51,7 +51,7 @@ export default function App() {
     <div className="min-h-full bg-slate-900 text-slate-100">
       <div className="mx-auto flex min-h-full max-w-md flex-col px-4 py-6">
         <header className="mb-5">
-          <h1 className="text-xl font-bold">Aircraft Complaint Assistant</h1>
+          <h1 className="text-xl font-bold">Fight or Flight</h1>
           <p className="mt-1 text-sm text-slate-400">
             Tap to see the aircraft overhead and their telemetry.
           </p>
