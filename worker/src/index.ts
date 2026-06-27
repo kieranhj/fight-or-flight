@@ -139,87 +139,146 @@ function normalize(ac: RawAircraft): NormalizedFlight {
   }
 }
 
-// ── Route enrichment (adsbdb.com) ────────────────────────────────────────────
+// ── Route enrichment ─────────────────────────────────────────────────────────
 // Raw ADS-B carries no origin/destination — those come from a callsign→route
-// database. adsbdb is free, no key, well-documented and stable. We look up each
-// callsign (GET /v0/callsign/{cs}) and cache the result at the edge: routes are
-// static, so positive hits cache for hours and dedupe load across taps; "unknown"
-// callsigns cache briefly so we don't re-hit for traffic with no schedule (e.g.
-// many business jets — same as FR24 often showing no route for them).
-type AdsbdbAirport = {
-  icao_code?: string
-  iata_code?: string
-  name?: string
-  municipality?: string
-}
-type AdsbdbResponse = {
-  response?: { flightroute?: { origin?: AdsbdbAirport; destination?: AdsbdbAirport } }
-}
+// database. These free DBs rate-limit by IP, and Cloudflare Workers egress from
+// SHARED IPs, so a provider can 429 us regardless of our own (low) usage. We
+// therefore: cache hard (routes are static), serialise lookups, and back off
+// globally on a 429 so we never amplify it. `ROUTE_PROVIDER` selects the source;
+// the /api/route diagnostic probes all of them so we can pick one that works from
+// the deployed Worker.
+type RouteProvider = 'adsbdb' | 'adsblol' | 'hexdb'
+const ROUTE_PROVIDER: RouteProvider = 'adsbdb'
 
 const ROUTE_CACHE_TTL = 21_600 // 6h for a known route
 const ROUTE_NEG_TTL = 1_800 // 30m for an unknown callsign
+const ROUTE_BACKOFF_TTL = 300 // pause hitting the provider after a 429
+const BACKOFF_KEY = 'https://cache.local/route-backoff'
 
-function airportLabel(a: AdsbdbAirport | undefined): string | null {
+type ProviderHit = { status: number; route: FlightRoute | null; body: string }
+
+/** Fetch + parse one provider for one callsign. Throws only on network error. */
+async function fetchProvider(provider: RouteProvider, cs: string): Promise<ProviderHit> {
+  const ua = { Accept: 'application/json', 'User-Agent': USER_AGENT }
+  if (provider === 'hexdb') {
+    const res = await fetch(`https://hexdb.io/api/v1/route/icao/${encodeURIComponent(cs)}`, { headers: ua })
+    const body = await res.text()
+    let route: FlightRoute | null = null
+    try {
+      const r = (JSON.parse(body) as { route?: string }).route
+      if (r && r.includes('-') && !/unknown/i.test(r)) {
+        const [o, d] = r.split('-')
+        route = { originIcao: o || null, destinationIcao: d || null, originLabel: o || null, destinationLabel: d || null }
+      }
+    } catch { /* body shown in diagnostic */ }
+    return { status: res.status, route, body }
+  }
+  if (provider === 'adsblol') {
+    const res = await fetch('https://api.adsb.lol/api/0/routeset', {
+      method: 'POST',
+      headers: { ...ua, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ planes: [{ callsign: cs, lat: 51.47, lng: -0.45 }] }),
+    })
+    const body = await res.text()
+    let route: FlightRoute | null = null
+    try {
+      const items = JSON.parse(body) as { _airports?: { icao?: string; iata?: string; name?: string }[]; plane_found?: boolean }[]
+      const a = Array.isArray(items) ? items[0]?._airports : undefined
+      if (a && a.length) {
+        const o = a[0]
+        const d = a[a.length - 1]
+        route = {
+          originIcao: o?.icao ?? null,
+          destinationIcao: d?.icao ?? null,
+          originLabel: o?.iata ?? o?.name ?? o?.icao ?? null,
+          destinationLabel: d?.iata ?? d?.name ?? d?.icao ?? null,
+        }
+      }
+    } catch { /* body shown in diagnostic */ }
+    return { status: res.status, route, body }
+  }
+  // adsbdb (default)
+  const res = await fetch(`https://api.adsbdb.com/v0/callsign/${encodeURIComponent(cs)}`, { headers: ua })
+  const body = await res.text()
+  let route: FlightRoute | null = null
+  try {
+    const fr = (JSON.parse(body) as {
+      response?: { flightroute?: { origin?: AdsbdbAirport; destination?: AdsbdbAirport } }
+    }).response?.flightroute
+    if (fr && (fr.origin || fr.destination)) {
+      route = {
+        originIcao: fr.origin?.icao_code ?? null,
+        destinationIcao: fr.destination?.icao_code ?? null,
+        originLabel: adsbdbLabel(fr.origin),
+        destinationLabel: adsbdbLabel(fr.destination),
+      }
+    }
+  } catch { /* body shown in diagnostic */ }
+  return { status: res.status, route, body }
+}
+
+type AdsbdbAirport = { icao_code?: string; iata_code?: string; name?: string; municipality?: string }
+function adsbdbLabel(a: AdsbdbAirport | undefined): string | null {
   if (!a) return null
   return a.iata_code ?? a.municipality ?? a.name ?? a.icao_code ?? null
 }
 
-/** Look up one callsign's route, with edge caching (positive long, negative short). */
-async function lookupRoute(callsign: string, ctx: ExecutionContext): Promise<FlightRoute | null> {
-  const cs = callsign.trim().toUpperCase()
-  if (!cs) return null
-  const cache = caches.default
-  const key = new Request(`https://cache.local/route/${encodeURIComponent(cs)}`)
-  const hit = await cache.match(key)
-  if (hit) return ((await hit.json()) as { route: FlightRoute | null }).route
+type RouteResult = { route: FlightRoute | null; rateLimited: boolean }
 
-  let route: FlightRoute | null = null
-  let ttl = ROUTE_NEG_TTL
+/** Look up one callsign's route via ROUTE_PROVIDER, with caching + 429 backoff. */
+async function lookupRoute(callsign: string, ctx: ExecutionContext): Promise<RouteResult> {
+  const cs = callsign.trim().toUpperCase()
+  if (!cs) return { route: null, rateLimited: false }
+  const cache = caches.default
+  const key = new Request(`https://cache.local/route/${ROUTE_PROVIDER}/${encodeURIComponent(cs)}`)
+  const hit = await cache.match(key)
+  if (hit) return { route: ((await hit.json()) as { route: FlightRoute | null }).route, rateLimited: false }
+  if (await cache.match(new Request(BACKOFF_KEY))) return { route: null, rateLimited: true }
+
+  let hitData: ProviderHit
   try {
-    const res = await fetch(`https://api.adsbdb.com/v0/callsign/${encodeURIComponent(cs)}`, {
-      headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
-    })
-    if (res.ok) {
-      const fr = ((await res.json()) as AdsbdbResponse).response?.flightroute
-      if (fr && (fr.origin || fr.destination)) {
-        route = {
-          originIcao: fr.origin?.icao_code ?? null,
-          destinationIcao: fr.destination?.icao_code ?? null,
-          originLabel: airportLabel(fr.origin),
-          destinationLabel: airportLabel(fr.destination),
-        }
-        ttl = ROUTE_CACHE_TTL
-      }
-    } else if (res.status !== 404) {
-      return null // transient upstream error — don't cache, allow a later retry
-    }
+    hitData = await fetchProvider(ROUTE_PROVIDER, cs)
   } catch {
-    return null
+    return { route: null, rateLimited: false } // network blip — don't cache
   }
 
+  if (hitData.status === 429) {
+    ctx.waitUntil(
+      cache.put(
+        new Request(BACKOFF_KEY),
+        new Response('1', { headers: { 'Cache-Control': `public, max-age=${ROUTE_BACKOFF_TTL}` } }),
+      ),
+    )
+    return { route: null, rateLimited: true }
+  }
+  // 200 with a route → cache long; 200/404 with none → cache short; other → don't cache.
+  const ok2xx = hitData.status >= 200 && hitData.status < 300
+  if (!ok2xx && hitData.status !== 404) return { route: null, rateLimited: false }
+  const ttl = hitData.route ? ROUTE_CACHE_TTL : ROUTE_NEG_TTL
   ctx.waitUntil(
     cache.put(
       key,
-      new Response(JSON.stringify({ route }), {
+      new Response(JSON.stringify({ route: hitData.route }), {
         headers: { 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${ttl}` },
       }),
     ),
   )
-  return route
+  return { route: hitData.route, rateLimited: false }
 }
 
 /**
- * Fill origin/destination for each flight with a callsign (parallel, cached).
- * Best-effort: failures leave a flight's route null rather than failing the request.
+ * Fill origin/destination for each flight with a callsign. Serialised so a 429
+ * short-circuits the rest (don't amplify rate limits). Best-effort: failures
+ * leave a flight's route null rather than failing the request.
  */
 async function enrichRoutes(flights: NormalizedFlight[], ctx: ExecutionContext): Promise<void> {
-  await Promise.all(
-    flights
-      .filter((f) => f.callsign)
-      .map(async (f) => {
-        f.route = await lookupRoute(f.callsign as string, ctx)
-      }),
-  )
+  let rateLimited = false
+  for (const f of flights) {
+    if (!f.callsign || rateLimited) continue
+    const r = await lookupRoute(f.callsign, ctx)
+    if (r.rateLimited) rateLimited = true
+    else f.route = r.route
+  }
 }
 
 // ── Upstream feeds ───────────────────────────────────────────────────────────
@@ -360,40 +419,26 @@ export default {
       return handleNearby(url, env, ctx)
     }
 
-    // Diagnostic: GET /api/route?callsign=BAW117 → fresh adsbdb lookup with the raw
-    // upstream status + body, so route problems are visible. Bypasses the cache.
-    // Try ?callsign=random or a known-good ?callsign=PGT821 to prove the API works.
+    // Diagnostic: GET /api/route?callsign=BAW117 → probes ALL route providers fresh
+    // (bypassing cache) and returns each one's status, parsed route and body sample,
+    // so we can pick a source that works from the deployed Worker. Try a known-good
+    // callsign like PGT821.
     if (url.pathname === '/api/route') {
       const cs = url.searchParams.get('callsign')
       if (!cs) return json({ error: 'callsign query param required' }, env, 400)
-      const target = cs.trim()
-      const upstream = `https://api.adsbdb.com/v0/callsign/${encodeURIComponent(target)}`
-      try {
-        const res = await fetch(upstream, {
-          headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
-        })
-        const body = await res.text()
-        let route: FlightRoute | null = null
-        try {
-          const fr = (JSON.parse(body) as AdsbdbResponse).response?.flightroute
-          if (fr && (fr.origin || fr.destination)) {
-            route = {
-              originIcao: fr.origin?.icao_code ?? null,
-              destinationIcao: fr.destination?.icao_code ?? null,
-              originLabel: airportLabel(fr.origin),
-              destinationLabel: airportLabel(fr.destination),
-            }
+      const target = cs.trim().toUpperCase()
+      const providers: RouteProvider[] = ['adsbdb', 'adsblol', 'hexdb']
+      const results = await Promise.all(
+        providers.map(async (p) => {
+          try {
+            const h = await fetchProvider(p, target)
+            return { provider: p, status: h.status, route: h.route, bodySample: h.body.slice(0, 400) }
+          } catch (err) {
+            return { provider: p, error: String(err) }
           }
-        } catch {
-          /* leave route null; bodySample shows what came back */
-        }
-        return json(
-          { callsign: target, upstream, status: res.status, ok: res.ok, route, bodySample: body.slice(0, 600) },
-          env,
-        )
-      } catch (err) {
-        return json({ callsign: target, upstream, error: String(err) }, env, 502)
-      }
+        }),
+      )
+      return json({ callsign: target, active: ROUTE_PROVIDER, providers: results }, env)
     }
 
     if (url.pathname === '/' || url.pathname === '/health') {
