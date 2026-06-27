@@ -75,3 +75,41 @@ export function distanceToPolylineNm(p: LatLon, polyline: LatLon[]): number {
   }
   return min
 }
+
+/** Destination point given a start, bearing (deg) and distance (nm). */
+export function destinationPoint(origin: LatLon, bearing: number, distanceNm: number): LatLon {
+  const d = distanceNm / EARTH_RADIUS_NM
+  const θ = toRad(bearing)
+  const φ1 = toRad(origin.lat)
+  const λ1 = toRad(origin.lon)
+  const φ2 = Math.asin(Math.sin(φ1) * Math.cos(d) + Math.cos(φ1) * Math.sin(d) * Math.cos(θ))
+  const λ2 =
+    λ1 + Math.atan2(Math.sin(θ) * Math.sin(d) * Math.cos(φ1), Math.cos(d) - Math.sin(φ1) * Math.sin(φ2))
+  return { lat: toDeg(φ2), lon: toDeg(λ2) }
+}
+
+/** Average of two bearings (deg), handling wraparound. */
+function averageBearing(a: number, b: number): number {
+  const x = Math.cos(toRad(a)) + Math.cos(toRad(b))
+  const y = Math.sin(toRad(a)) + Math.sin(toRad(b))
+  return (toDeg(Math.atan2(y, x)) + 360) % 360
+}
+
+/**
+ * A closed swath polygon `halfWidthNm` either side of a centreline — used to draw
+ * the corridor as a transparent ribbon on the map.
+ */
+export function corridorSwath(centreline: LatLon[], halfWidthNm: number): LatLon[] {
+  if (centreline.length < 2) return []
+  const left: LatLon[] = []
+  const right: LatLon[] = []
+  for (let i = 0; i < centreline.length; i++) {
+    let brg: number
+    if (i === 0) brg = bearingDeg(centreline[0], centreline[1])
+    else if (i === centreline.length - 1) brg = bearingDeg(centreline[i - 1], centreline[i])
+    else brg = averageBearing(bearingDeg(centreline[i - 1], centreline[i]), bearingDeg(centreline[i], centreline[i + 1]))
+    left.push(destinationPoint(centreline[i], (brg - 90 + 360) % 360, halfWidthNm))
+    right.push(destinationPoint(centreline[i], (brg + 90) % 360, halfWidthNm))
+  }
+  return [...left, ...right.reverse()]
+}

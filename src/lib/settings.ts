@@ -28,6 +28,8 @@ export type Settings = {
   homeLon: number
   /** Include categories normally filtered out (military / helicopters / light GA). */
   include: IncludeFilters
+  /** Draw the airport corridor overlay on the map. */
+  showCorridors: boolean
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -39,6 +41,7 @@ export const DEFAULT_SETTINGS: Settings = {
   homeLat: HOME_LOCATION.lat,
   homeLon: HOME_LOCATION.lon,
   include: { military: false, rotorcraft: false, light: false },
+  showCorridors: true,
 }
 
 const KEY = 'foaf.settings'
