@@ -34,10 +34,14 @@ each phase's Definition of Done for review.
   data; `classify.ts` tags each as Farnborough/Heathrow/Gatwick (route-confirmed or
   indicative-by-proximity) or transit/unknown — labelled, never guessed. See
   [`docs/PHASE-3-NOTES.md`](./docs/PHASE-3-NOTES.md).
-- **Phase 4 — Rules engine v1: complete, pending review.** `rulesEngine.ts` runs R1
-  hours (deterministic breach), R2 altitude-floor and R3 corridor (both indicative)
-  over each classified flight; `FlagBadge` shows severity + a one-line why. See
+- **Phase 4 — Rules engine v1: ✅ done.** `rulesEngine.ts` runs R1 hours
+  (deterministic breach), R2 altitude-floor and R3 corridor (both indicative) over
+  each classified flight; `FlagBadge` shows severity + a one-line why. See
   [`docs/PHASE-4-NOTES.md`](./docs/PHASE-4-NOTES.md).
+- **Phase 5 — Complaint generator + log: complete, pending review.** Two taps from a
+  flight prefill an editable complaint to the right authority (`mailto:` / copy +
+  deep link — never auto-submitted); each is saved to a localStorage incident log
+  with CSV export. See [`docs/PHASE-5-NOTES.md`](./docs/PHASE-5-NOTES.md).
 
 ## Develop
 

@@ -26,9 +26,11 @@ function Row({ label, value }: { label: string; value: string }) {
 export default function FlightDetail({
   flight,
   onClose,
+  onComplain,
 }: {
   flight: NormalizedFlight
   onClose: () => void
+  onComplain: (f: NormalizedFlight) => void
 }) {
   const vs = formatVerticalRate(flight.verticalRateFpm)
   const { classification, flags } = assessFlight(flight)
@@ -118,9 +120,17 @@ export default function FlightDetail({
           />
         </div>
 
+        <button
+          onClick={() => onComplain(flight)}
+          className="mt-4 w-full rounded-xl bg-sky-500 px-4 py-3 text-sm font-semibold text-white active:scale-[0.99]"
+        >
+          Generate complaint
+        </button>
+
         <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
           Telemetry from volunteer ADS-B feeds — indicative, and may be incomplete. Flags are a
-          guide, not proof: review before acting. One-tap complaint generation arrives next phase.
+          guide, not proof: review before acting. The complaint is prefilled for you to edit and
+          send — it’s never submitted automatically.
         </p>
       </div>
     </div>
