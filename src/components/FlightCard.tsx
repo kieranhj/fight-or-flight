@@ -22,14 +22,25 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
   )
 }
 
-export default function FlightCard({ flight }: { flight: NormalizedFlight }) {
+export default function FlightCard({
+  flight,
+  onSelect,
+}: {
+  flight: NormalizedFlight
+  onSelect?: (f: NormalizedFlight) => void
+}) {
   const vs = formatVerticalRate(flight.verticalRateFpm)
   const vsAccent =
     vs.dir === 'up' ? 'text-emerald-400' : vs.dir === 'down' ? 'text-amber-400' : 'text-slate-100'
   const arrow = vs.dir === 'up' ? '▲ ' : vs.dir === 'down' ? '▼ ' : ''
 
   return (
-    <li className="rounded-xl border border-slate-700 bg-slate-800/60 p-3">
+    <li
+      onClick={onSelect ? () => onSelect(flight) : undefined}
+      className={`rounded-xl border border-slate-700 bg-slate-800/60 p-3 ${
+        onSelect ? 'cursor-pointer transition active:scale-[0.99] hover:border-slate-600' : ''
+      }`}
+    >
       <div className="mb-3 flex items-baseline justify-between gap-2">
         <div className="min-w-0">
           <div className="truncate text-base font-bold text-white">{flightTitle(flight)}</div>

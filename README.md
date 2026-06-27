@@ -23,10 +23,13 @@ each phase's Definition of Done for review.
 - **Phase 0 — Scaffold & prove the data path: ✅ done.** See
   [`docs/PHASE-0-NOTES.md`](./docs/PHASE-0-NOTES.md) (incl. the CORS spike: direct
   calls work, but the Worker proxy stays the default).
-- **Phase 1 — Nearest-N telemetry (MVP): complete, pending review.** Worker calls
-  airplanes.live for real (normalize → filter → sort → trim → ~8s cache → adsb.lol
-  fallback); one tap → GPS → distance-sorted FlightCards. See
+- **Phase 1 — Nearest-N telemetry (MVP): ✅ done.** Worker calls airplanes.live
+  for real (normalize → filter → sort → trim → ~8s cache → adsb.lol fallback);
+  one tap → GPS → distance-sorted FlightCards. See
   [`docs/PHASE-1-NOTES.md`](./docs/PHASE-1-NOTES.md).
+- **Phase 2 — Map: complete, pending review.** Leaflet map with your position +
+  accuracy ring and heading-rotated aircraft markers; tap a marker or card for a
+  full telemetry detail sheet. See [`docs/PHASE-2-NOTES.md`](./docs/PHASE-2-NOTES.md).
 
 ## Develop
 
