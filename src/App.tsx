@@ -9,7 +9,7 @@ import { getCurrentPosition, type GeoResult } from './lib/geolocation'
 const CONSTRAINTS = [
   'Telemetry comes from free, volunteer ADS-B feeds — no uptime guarantee, and very low or masked aircraft can be missed.',
   'The list is filtered to airborne fixed-wing jets; military, rotorcraft, light GA and on-ground traffic are removed.',
-  'Rule flags (which airport, possible breaches) arrive in later phases — this phase just identifies what’s overhead.',
+  'Flags are indicative, not proof — operating hours are clear-cut, but altitude and track use approximations and aircraft on approach are legitimately low. Always review before acting.',
 ]
 
 type View = 'list' | 'map'

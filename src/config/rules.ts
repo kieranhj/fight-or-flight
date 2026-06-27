@@ -56,6 +56,12 @@ export const RULE_THRESHOLDS = {
   altitudeFloorMarginFt: 500,
   /** R3: handled per-corridor via Corridor.toleranceNm; this is the default fallback. */
   corridorDefaultToleranceNm: 1.5,
+  /**
+   * R3: upper bound (nm) on lateral offset before we STOP flagging. Beyond this a
+   * flight is clearly not on the (single, seed) encoded SID at all, so flagging it
+   * "off track" would be noise rather than signal.
+   */
+  corridorMaxOffsetNm: 5,
 }
 
 /** Global UI disclaimer — flags are indicative, not proof (Build Plan §9). */

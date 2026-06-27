@@ -8,8 +8,9 @@ import {
   formatDistance,
   formatBearing,
 } from '../lib/format'
-import { classifyFlight } from '../lib/classify'
+import { assessFlight } from '../lib/assess'
 import AirportTag from './AirportTag'
+import FlagBadge from './FlagBadge'
 
 function Stat({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
@@ -35,6 +36,7 @@ export default function FlightCard({
   const vsAccent =
     vs.dir === 'up' ? 'text-emerald-400' : vs.dir === 'down' ? 'text-amber-400' : 'text-slate-100'
   const arrow = vs.dir === 'up' ? '▲ ' : vs.dir === 'down' ? '▼ ' : ''
+  const { classification, flags } = assessFlight(flight)
 
   return (
     <li
@@ -47,8 +49,11 @@ export default function FlightCard({
         <div className="min-w-0">
           <div className="truncate text-base font-bold text-white">{flightTitle(flight)}</div>
           <div className="truncate text-xs text-slate-400">{flightSubtitle(flight)}</div>
-          <div className="mt-1.5">
-            <AirportTag classification={classifyFlight(flight)} />
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            <AirportTag classification={classification} />
+            {flags.map((f) => (
+              <FlagBadge key={f.ruleId} flag={f} />
+            ))}
           </div>
         </div>
         <div className="shrink-0 text-right">
