@@ -14,6 +14,12 @@ export const KEPT_CATEGORIES = ['A2', 'A3', 'A4', 'A5', 'A6'] as const
 export const EXCLUDE_MILITARY = true
 
 /**
+ * Drop aircraft reporting `alt_baro: "ground"` (parked/taxiing at an airport).
+ * The app is about overhead noise, so on-ground traffic is just clutter.
+ */
+export const EXCLUDE_ON_GROUND = true
+
+/**
  * Optional ICAO type-code exclusions for known light GA, in addition to the
  * category filter. Empty for now; populate as we observe noise from specific
  * light types. Matched case-insensitively against the `t` field.
@@ -24,5 +30,6 @@ export const FILTER_CONFIG = {
   excludedCategories: EXCLUDED_CATEGORIES,
   keptCategories: KEPT_CATEGORIES,
   excludeMilitary: EXCLUDE_MILITARY,
+  excludeOnGround: EXCLUDE_ON_GROUND,
   excludedTypeCodes: EXCLUDED_TYPE_CODES,
 }

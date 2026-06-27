@@ -22,6 +22,7 @@ export interface Env {
 // military, rotorcraft (A7) and very light / hobbyist GA (A1).
 const EXCLUDED_CATEGORIES = new Set(['A1', 'A7'])
 const EXCLUDE_MILITARY = true
+const EXCLUDE_ON_GROUND = true // app is about overhead noise; drop parked/taxiing traffic
 const EXCLUDED_TYPE_CODES = new Set<string>([]) // e.g. add light-GA ICAO type codes
 
 // ── Normalized output shape (mirror of src/lib/adsb.ts NormalizedFlight) ─────
@@ -89,6 +90,7 @@ function isMilitary(ac: RawAircraft): boolean {
 
 function isExcluded(ac: RawAircraft): boolean {
   if (EXCLUDE_MILITARY && isMilitary(ac)) return true
+  if (EXCLUDE_ON_GROUND && ac.alt_baro === 'ground') return true
   const cat = str(ac.category)?.toUpperCase()
   if (cat && EXCLUDED_CATEGORIES.has(cat)) return true
   const type = str(ac.t)?.toUpperCase()

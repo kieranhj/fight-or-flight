@@ -54,6 +54,8 @@ Status: **complete, pending your review.** Phase 2 (map) won't start until you c
 - **Field-mapping assumptions** (ADSBExchange-v2): if a value looks off on real
   data (e.g. nav altitude, vertical rate, or a type/category that should/should
   not be filtered), tell me what you see and I'll adjust the normalizer/filters.
-- On-ground aircraft are kept but shown as “On ground”; we can filter them out if
-  they prove noisy.
+- On-ground aircraft (`alt_baro: "ground"`) are filtered out — the app targets
+  overhead noise, so parked/taxiing traffic is clutter. Toggle via
+  `EXCLUDE_ON_GROUND` in `src/config/filters.ts` (mirrored in the Worker). The
+  `FlightCard` still renders an “On ground” state in case the flag is disabled.
 - No auto-refresh yet (tap **Refresh** to re-poll) — that's Phase 6 polish.
