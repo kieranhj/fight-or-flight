@@ -171,6 +171,36 @@ export default function SettingsModal({
             </p>
           </Field>
 
+          <Field label="Auto-refresh">
+            <label className="flex items-center gap-2 text-sm text-slate-300">
+              <input
+                type="checkbox"
+                checked={settings.autoRefresh}
+                onChange={(e) => set({ autoRefresh: e.target.checked })}
+                className="accent-sky-500"
+              />
+              Refresh automatically while results are shown
+            </label>
+            {settings.autoRefresh && (
+              <div className="mt-2">
+                <Segmented
+                  value={String(settings.autoRefreshSec)}
+                  options={[
+                    { value: '5', label: '5s' },
+                    { value: '10', label: '10s' },
+                    { value: '15', label: '15s' },
+                    { value: '30', label: '30s' },
+                  ]}
+                  onChange={(v) => set({ autoRefreshSec: Number(v) })}
+                />
+              </div>
+            )}
+            <p className="mt-1.5 text-[11px] text-slate-500">
+              Paused when the tab is hidden or you’re offline. Builds a position trail for aircraft
+              that stay in view.
+            </p>
+          </Field>
+
           <Field label="Location">
             <Segmented
               value={settings.locationMode}

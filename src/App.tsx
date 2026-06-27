@@ -20,6 +20,9 @@ const CONSTRAINTS = [
 
 type View = 'list' | 'map'
 
+/** Max positions kept per aircraft trail (e.g. 15 × 10s ≈ 2.5 min of track). */
+const TRAIL_MAX = 15
+
 function useOnline(): boolean {
   const [online, setOnline] = useState(() => navigator.onLine)
   useEffect(() => {
@@ -48,7 +51,10 @@ export default function App() {
   const [showLog, setShowLog] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [logCount, setLogCount] = useState(() => incidentCount())
+  const [trails, setTrails] = useState<Record<string, [number, number][]>>({})
+  const [refreshing, setRefreshing] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
+  const posRef = useRef<GeoResult | null>(null)
   const online = useOnline()
 
   function updateSettings(s: Settings) {
@@ -67,10 +73,53 @@ export default function App() {
     }
   }
 
-  async function identify() {
+  // Append current positions to each aircraft's trail; prune aircraft now absent.
+  function applyResult(res: NearbyResponse) {
+    setResult(res)
+    setTrails((prev) => {
+      const next: Record<string, [number, number][]> = {}
+      for (const f of res.flights) {
+        if (!f.hex || f.lat == null || f.lon == null) continue
+        const t = prev[f.hex] ?? []
+        const last = t[t.length - 1]
+        const moved = !last || last[0] !== f.lat || last[1] !== f.lon
+        next[f.hex] = (moved ? [...t, [f.lat, f.lon] as [number, number]] : t).slice(-TRAIL_MAX)
+      }
+      return next
+    })
+  }
+
+  async function runFetch(p: GeoResult, auto: boolean) {
     abortRef.current?.abort()
     const ac = new AbortController()
     abortRef.current = ac
+    if (auto) setRefreshing(true)
+    else setStatus('loading')
+    try {
+      const res = await fetchNearby({
+        lat: p.lat,
+        lon: p.lon,
+        radiusNm: settings.radiusNm,
+        n: settings.n,
+        include: settings.include,
+        signal: ac.signal,
+      })
+      if (ac.signal.aborted) return
+      applyResult(res)
+      setStatus('ready')
+    } catch (err) {
+      if (ac.signal.aborted) return
+      // Auto-refresh failures keep the last good result on screen, silently.
+      if (!auto) {
+        setError(err instanceof Error ? err.message : String(err))
+        setStatus('error')
+      }
+    } finally {
+      if (auto) setRefreshing(false)
+    }
+  }
+
+  async function identify() {
     setError(null)
     setSelected(null)
     if (!online) {
@@ -82,25 +131,31 @@ export default function App() {
     try {
       const { pos: p, home } = await resolvePosition()
       setPos(p)
+      posRef.current = p
       setHomeUsed(home)
-      setStatus('loading')
-      const res = await fetchNearby({
-        lat: p.lat,
-        lon: p.lon,
-        radiusNm: settings.radiusNm,
-        n: settings.n,
-        include: settings.include,
-        signal: ac.signal,
-      })
-      if (ac.signal.aborted) return
-      setResult(res)
-      setStatus('ready')
+      setTrails({}) // fresh start for a new identify
+      await runFetch(p, false)
     } catch (err) {
-      if (ac.signal.aborted) return
       setError(err instanceof Error ? err.message : String(err))
       setStatus('error')
     }
   }
+
+  // Auto-refresh loop: re-fetch on an interval, paused when hidden/offline.
+  const runFetchRef = useRef(runFetch)
+  runFetchRef.current = runFetch
+  useEffect(() => {
+    if (!settings.autoRefresh) return
+    const id = setInterval(
+      () => {
+        if (document.hidden || !navigator.onLine) return
+        const p = posRef.current
+        if (p) runFetchRef.current(p, true)
+      },
+      Math.max(5, settings.autoRefreshSec) * 1000,
+    )
+    return () => clearInterval(id)
+  }, [settings.autoRefresh, settings.autoRefreshSec])
 
   const hasResults = result != null && status !== 'error'
 
@@ -170,6 +225,17 @@ export default function App() {
             </div>
           )}
 
+          {hasResults && settings.autoRefresh && (
+            <p className="mt-2 text-center text-[11px] text-slate-500">
+              <span
+                className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle ${
+                  refreshing ? 'animate-pulse bg-emerald-400' : 'bg-slate-600'
+                }`}
+              />
+              Auto-refreshing every {settings.autoRefreshSec}s
+            </p>
+          )}
+
           <main className="mt-4 flex-1">
             {hasResults && view === 'list' && (
               <FlightList
@@ -182,6 +248,7 @@ export default function App() {
               <MapView
                 pos={pos}
                 flights={result.flights}
+                trails={trails}
                 selectedHex={selected?.hex ?? null}
                 onSelect={setSelected}
               />

@@ -30,6 +30,10 @@ export type Settings = {
   include: IncludeFilters
   /** Draw the airport corridor overlay on the map. */
   showCorridors: boolean
+  /** Re-fetch automatically while results are shown (paused when hidden/offline). */
+  autoRefresh: boolean
+  /** Auto-refresh interval in seconds. */
+  autoRefreshSec: number
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -42,6 +46,8 @@ export const DEFAULT_SETTINGS: Settings = {
   homeLon: HOME_LOCATION.lon,
   include: { military: false, rotorcraft: false, light: false },
   showCorridors: true,
+  autoRefresh: false,
+  autoRefreshSec: 10,
 }
 
 const KEY = 'foaf.settings'
@@ -62,6 +68,12 @@ export function loadSettings(): Settings {
       include: { ...DEFAULT_SETTINGS.include, ...parsed.include },
       n: clamp(parsed.n ?? DEFAULT_SETTINGS.n, 1, 20, DEFAULT_SETTINGS.n),
       radiusNm: clamp(parsed.radiusNm ?? DEFAULT_SETTINGS.radiusNm, 1, 50, DEFAULT_SETTINGS.radiusNm),
+      autoRefreshSec: clamp(
+        parsed.autoRefreshSec ?? DEFAULT_SETTINGS.autoRefreshSec,
+        5,
+        120,
+        DEFAULT_SETTINGS.autoRefreshSec,
+      ),
     }
   } catch {
     return DEFAULT_SETTINGS
