@@ -156,6 +156,21 @@ export default function SettingsModal({
             </p>
           </Field>
 
+          <Field label="Map">
+            <label className="flex items-center gap-2 text-sm text-slate-300">
+              <input
+                type="checkbox"
+                checked={settings.showCorridors}
+                onChange={(e) => set({ showCorridors: e.target.checked })}
+                className="accent-sky-500"
+              />
+              Show corridor overlay
+            </label>
+            <p className="mt-1.5 text-[11px] text-slate-500">
+              Transparent swathes for the airport corridors, coloured by type (departure / arrival).
+            </p>
+          </Field>
+
           <Field label="Location">
             <Segmented
               value={settings.locationMode}

@@ -1,10 +1,60 @@
-import { useEffect } from 'react'
-import { MapContainer, TileLayer, Marker, Circle, useMap } from 'react-leaflet'
+import { Fragment, useEffect } from 'react'
+import { MapContainer, TileLayer, Marker, Circle, Polygon, Polyline, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import type { NormalizedFlight } from '../lib/adsb'
 import type { GeoResult } from '../lib/geolocation'
 import { assessFlight, topSeverity } from '../lib/assess'
+import { useSettings } from './SettingsContext'
+import { CORRIDORS, type CorridorKind } from '../config/corridors'
+import { corridorSwath } from '../lib/geo'
+
+// Corridor overlay colours, keyed by type.
+const CORRIDOR_COLOUR: Record<CorridorKind, string> = {
+  departure: '#f59e0b', // amber
+  arrival: '#2dd4bf', // teal
+}
+
+function CorridorOverlay() {
+  return (
+    <>
+      {CORRIDORS.map((c) => {
+        const colour = CORRIDOR_COLOUR[c.kind]
+        const swath = corridorSwath(c.centreline, c.toleranceNm).map(
+          (p) => [p.lat, p.lon] as L.LatLngExpression,
+        )
+        const line = c.centreline.map((p) => [p.lat, p.lon] as L.LatLngExpression)
+        return (
+          <Fragment key={c.id}>
+            {swath.length > 0 && (
+              <Polygon
+                positions={swath}
+                pathOptions={{
+                  color: colour,
+                  weight: 1,
+                  opacity: 0.5,
+                  fillColor: colour,
+                  fillOpacity: 0.12,
+                  interactive: false,
+                }}
+              />
+            )}
+            <Polyline
+              positions={line}
+              pathOptions={{
+                color: colour,
+                weight: 2,
+                opacity: 0.7,
+                dashArray: '5 5',
+                interactive: false,
+              }}
+            />
+          </Fragment>
+        )
+      })}
+    </>
+  )
+}
 
 // Aircraft glyph points north (up) at 0°; we rotate it by the flight's track.
 // Selected = sky-blue (overrides); a possible-breach flight = rose; else slate.
@@ -58,6 +108,7 @@ export default function MapView({
   selectedHex: string | null
   onSelect: (f: NormalizedFlight) => void
 }) {
+  const { showCorridors } = useSettings()
   const plotted = flights.filter(
     (f): f is NormalizedFlight & { lat: number; lon: number } =>
       f.lat != null && f.lon != null,
@@ -67,8 +118,12 @@ export default function MapView({
     ...plotted.map((f) => [f.lat, f.lon] as L.LatLngExpression),
   ]
 
+  const corridorKinds = showCorridors
+    ? (Array.from(new Set(CORRIDORS.map((c) => c.kind))) as CorridorKind[])
+    : []
+
   return (
-    <div className="h-[55vh] overflow-hidden rounded-xl border border-slate-700">
+    <div className="relative h-[55vh] overflow-hidden rounded-xl border border-slate-700">
       <MapContainer
         center={[pos.lat, pos.lon]}
         zoom={12}
@@ -80,6 +135,7 @@ export default function MapView({
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           maxZoom={19}
         />
+        {showCorridors && <CorridorOverlay />}
         <Circle
           center={[pos.lat, pos.lon]}
           radius={pos.accuracyM}
@@ -101,6 +157,20 @@ export default function MapView({
         ))}
         <FitBounds points={points} />
       </MapContainer>
+      {corridorKinds.length > 0 && (
+        <div className="pointer-events-none absolute bottom-2 left-2 z-[500] rounded-lg bg-slate-900/80 px-2 py-1.5 text-[10px] text-slate-200 backdrop-blur">
+          <div className="mb-0.5 font-semibold uppercase tracking-wide text-slate-400">Corridors</div>
+          {corridorKinds.map((k) => (
+            <div key={k} className="flex items-center gap-1.5">
+              <span
+                className="inline-block h-2 w-3 rounded-sm"
+                style={{ backgroundColor: CORRIDOR_COLOUR[k] }}
+              />
+              <span className="capitalize">{k}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

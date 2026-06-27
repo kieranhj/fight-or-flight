@@ -5,9 +5,13 @@ import type { Airport, LatLon } from './types'
 // They are NOT real AIP waypoints — replace with published RNAV SID/STAR
 // coordinates in Phase 6. Everything here is deliberately approximate.
 
+/** Corridor type, for map colour-coding. Extend as arrival/other routes are added. */
+export type CorridorKind = 'departure' | 'arrival'
+
 export type Corridor = {
   id: string
   airport: Airport['icao']
+  kind: CorridorKind
   label: string
   /** Ordered centreline points (rough). Lateral offset beyond `toluranceNm` => indicative flag. */
   centreline: LatLon[]
@@ -25,6 +29,7 @@ export const CORRIDORS: Corridor[] = [
   {
     id: 'EGLF-RW24-SOUTH-DEP',
     airport: 'EGLF',
+    kind: 'departure',
     label: 'Farnborough Rwy 24 departures (GWC 2F / HAZEL 2F SIDs)',
     // STILL APPROXIMATE — to replace with real WebTrak/AIP geometry, follow
     // docs/CORRIDOR-DATA-EXTRACTION.md.
