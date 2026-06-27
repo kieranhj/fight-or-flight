@@ -28,6 +28,9 @@ const EXCLUDED_TYPE_CODES = new Set<string>([]) // e.g. add light-GA ICAO type c
 /** Per-request opt-ins to include normally-filtered categories (default: all off). */
 type FilterOpts = { includeMilitary: boolean; includeRotorcraft: boolean; includeLight: boolean }
 
+/** Sent on every upstream request so feed operators can identify / contact us. */
+const USER_AGENT = 'fight-or-flight (+github.com/kieranhj/fight-or-flight)'
+
 // ── Normalized output shape (mirror of src/lib/adsb.ts NormalizedFlight) ─────
 type FlightRoute = {
   originIcao: string | null
@@ -174,10 +177,7 @@ async function lookupRoute(callsign: string, ctx: ExecutionContext): Promise<Fli
   let ttl = ROUTE_NEG_TTL
   try {
     const res = await fetch(`https://api.adsbdb.com/v0/callsign/${encodeURIComponent(cs)}`, {
-      headers: {
-        Accept: 'application/json',
-        'User-Agent': 'fight-or-flight (+github.com/kieranhj/fight-or-flight)',
-      },
+      headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
     })
     if (res.ok) {
       const fr = ((await res.json()) as AdsbdbResponse).response?.flightroute
@@ -360,12 +360,40 @@ export default {
       return handleNearby(url, env, ctx)
     }
 
-    // Diagnostic: GET /api/route?callsign=BAW117 → the route we resolve for a callsign.
+    // Diagnostic: GET /api/route?callsign=BAW117 → fresh adsbdb lookup with the raw
+    // upstream status + body, so route problems are visible. Bypasses the cache.
+    // Try ?callsign=random or a known-good ?callsign=PGT821 to prove the API works.
     if (url.pathname === '/api/route') {
       const cs = url.searchParams.get('callsign')
       if (!cs) return json({ error: 'callsign query param required' }, env, 400)
-      const route = await lookupRoute(cs, ctx)
-      return json({ callsign: cs.trim().toUpperCase(), route }, env)
+      const target = cs.trim()
+      const upstream = `https://api.adsbdb.com/v0/callsign/${encodeURIComponent(target)}`
+      try {
+        const res = await fetch(upstream, {
+          headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
+        })
+        const body = await res.text()
+        let route: FlightRoute | null = null
+        try {
+          const fr = (JSON.parse(body) as AdsbdbResponse).response?.flightroute
+          if (fr && (fr.origin || fr.destination)) {
+            route = {
+              originIcao: fr.origin?.icao_code ?? null,
+              destinationIcao: fr.destination?.icao_code ?? null,
+              originLabel: airportLabel(fr.origin),
+              destinationLabel: airportLabel(fr.destination),
+            }
+          }
+        } catch {
+          /* leave route null; bodySample shows what came back */
+        }
+        return json(
+          { callsign: target, upstream, status: res.status, ok: res.ok, route, bodySample: body.slice(0, 600) },
+          env,
+        )
+      } catch (err) {
+        return json({ callsign: target, upstream, error: String(err) }, env, 502)
+      }
     }
 
     if (url.pathname === '/' || url.pathname === '/health') {
