@@ -10,12 +10,16 @@ export const AIRPORTS: Record<Airport['icao'], Airport> = {
     name: 'Farnborough',
     position: { lat: 51.2758, lon: -0.7763 },
     hours: {
-      // Condition 8 of the planning permission. Weekday window is approximate
-      // and must be verified against the 20/00871/REVPP decision notice.
+      // Condition 8 of planning permission 20/00871/REVPP, confirmed against
+      // Rushmoor Borough Council's published operating-hours page (the planning
+      // authority) and Farnborough Airport's own FAQ (June 2026): weekdays
+      // 07:00–22:00; weekends and bank holidays 08:00–20:00; no flying on
+      // Christmas Day or Boxing Day except in an emergency. (The permission also
+      // caps movements at 50,000/yr with a non-weekday sub-cap — not modelled here.)
       weekday: { open: '07:00', close: '22:00' },
       weekend: { open: '08:00', close: '20:00' },
       bankHoliday: { open: '08:00', close: '20:00' },
-      note: 'No flying Christmas/Boxing Day (bar emergencies). Weekday window approximate — verify against the 20/00871/REVPP decision notice (Condition 8).',
+      note: 'Weekdays 07:00–22:00; weekends and bank holidays 08:00–20:00. No flying Christmas Day or Boxing Day (bar emergencies). Source: Rushmoor BC operating-hours page; Condition 8 of planning permission 20/00871/REVPP.',
     },
     channels: [
       {
