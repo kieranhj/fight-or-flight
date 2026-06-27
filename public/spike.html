@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CORS spike · airplanes.live</title>
+    <style>
+      body {
+        font-family: ui-sans-serif, system-ui, sans-serif;
+        max-width: 40rem;
+        margin: 0 auto;
+        padding: 1.5rem;
+        background: #0f172a;
+        color: #e2e8f0;
+        line-height: 1.5;
+      }
+      h1 { font-size: 1.25rem; }
+      code { background: #1e293b; padding: 0.1rem 0.3rem; border-radius: 0.25rem; word-break: break-all; }
+      button {
+        background: #0ea5e9; color: white; border: 0; border-radius: 0.5rem;
+        padding: 0.7rem 1rem; font-size: 1rem; font-weight: 600; cursor: pointer;
+      }
+      .result { margin-top: 1rem; padding: 0.75rem; border-radius: 0.5rem; white-space: pre-wrap; }
+      .ok { background: rgba(16,185,129,.15); color: #6ee7b7; }
+      .err { background: rgba(244,63,94,.15); color: #fda4af; }
+      .muted { color: #94a3b8; font-size: 0.85rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Phase 0 CORS spike</h1>
+    <p class="muted">
+      Tries a <strong>direct</strong> browser <code>fetch()</code> to
+      <code>api.airplanes.live</code>. If the feed sends permissive CORS headers the
+      call succeeds; if not, the browser blocks it and the Worker proxy is required.
+    </p>
+    <p>
+      Endpoint:
+      <code id="endpoint">https://api.airplanes.live/v2/point/51.188/-0.802/10</code>
+    </p>
+    <button id="run">Run direct fetch</button>
+    <div id="result" class="result muted">Not run yet.</div>
+
+    <script>
+      const lat = 51.188, lon = -0.802, radius = 10
+      const endpoint = `https://api.airplanes.live/v2/point/${lat}/${lon}/${radius}`
+      document.getElementById('endpoint').textContent = endpoint
+      const out = document.getElementById('result')
+
+      document.getElementById('run').addEventListener('click', async () => {
+        out.className = 'result muted'
+        out.textContent = 'Fetching…'
+        const t0 = performance.now()
+        try {
+          const res = await fetch(endpoint, { method: 'GET' })
+          const ms = Math.round(performance.now() - t0)
+          const text = await res.text()
+          out.className = 'result ok'
+          out.textContent =
+            `SUCCESS — CORS allowed.\n` +
+            `HTTP ${res.status} in ${ms}ms\n` +
+            `Body length: ${text.length} chars\n\n` +
+            `=> Direct browser calls work. Worker becomes an optional cache/enrichment layer.\n\n` +
+            text.slice(0, 600)
+        } catch (err) {
+          const ms = Math.round(performance.now() - t0)
+          out.className = 'result err'
+          out.textContent =
+            `BLOCKED / FAILED after ${ms}ms.\n` +
+            `${err && err.name ? err.name + ': ' : ''}${err && err.message ? err.message : err}\n\n` +
+            `A TypeError "Failed to fetch" here almost always means the CORS\n` +
+            `preflight/response had no Access-Control-Allow-Origin header.\n\n` +
+            `=> Direct calls blocked. Use the Cloudflare Worker proxy (the default).`
+        }
+      })
+    </script>
+  </body>
+</html>

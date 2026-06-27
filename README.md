@@ -1,2 +1,66 @@
-# fight-or-flight
-A webapp to identify the source of overhead aircraft noise and determine whether there are legitimate grounds for complaint.
+# fight-or-flight — Aircraft Complaint Assistant
+
+A mobile-first PWA that, on one tap, lists the nearest aircraft to your location,
+shows their telemetry, flags any that look outside the local rules (Farnborough /
+Heathrow / Gatwick), and one-click-generates a prefilled, **editable** complaint
+to the right authority. Hosted on GitHub Pages with a Cloudflare Worker data proxy.
+
+> Flags are **indicative, not proof**. The app never auto-submits — it prefills a
+> `mailto:` or copy-paste message and hands off to you.
+
+## Stack
+
+- **Front-end**: Vite + React + TypeScript + Tailwind + Leaflet + `vite-plugin-pwa`
+- **Proxy**: Cloudflare Worker (TypeScript) via Wrangler — the front-end talks only to it
+- **Hosting**: GitHub Pages (front-end) + `*.workers.dev` (Worker)
+
+See [`Aircraft-Complaint-App-Build-Plan.md`](./Aircraft-Complaint-App-Build-Plan.md)
+for the full plan and phased roadmap. Work proceeds one phase per PR, stopping at
+each phase's Definition of Done for review.
+
+## Status
+
+**Phase 0 — Scaffold & prove the data path: complete (pending review).**
+See [`docs/PHASE-0-NOTES.md`](./docs/PHASE-0-NOTES.md), including the CORS spike.
+
+## Develop
+
+```bash
+npm install
+npm run dev            # front-end on http://localhost:5173
+npm run worker:dev     # Worker on http://127.0.0.1:8787
+```
+
+The dev front-end targets the local Worker by default. Open `/spike.html` to run
+the direct-fetch CORS test against airplanes.live.
+
+## Build & deploy
+
+```bash
+npm run build          # outputs ./dist (Vite base = /fight-or-flight/)
+npm run worker:deploy  # wrangler deploy --config worker/wrangler.toml
+```
+
+Pushing to `main` triggers `.github/workflows/deploy.yml` (GitHub Pages). Set the
+repo Actions variable `VITE_WORKER_BASE` to your deployed Worker URL so the built
+site points at it. One-time setup steps are in the Phase 0 notes.
+
+## Layout
+
+```
+src/
+  config/   airports, corridors, rules, filters, types, api  (all thresholds live here)
+  lib/      adsb client (Worker contract)                     (grows each phase)
+worker/
+  src/index.ts   Cloudflare Worker: GET /api/nearby (+ /health), CORS
+  wrangler.toml
+public/spike.html  Phase 0 in-browser CORS spike
+.github/workflows/deploy.yml
+```
+
+## Data & attribution
+
+Primary feed [airplanes.live](https://airplanes.live), fallback
+[adsb.lol](https://adsb.lol) — free, non-commercial, no uptime guarantee. Used
+under their terms with attribution. Free ADS-B feeds can miss very low or masked
+aircraft.
