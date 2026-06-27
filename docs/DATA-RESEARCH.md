@@ -45,9 +45,11 @@ routing (SW from the runway, crossing the A31 ridge), with the SID names and
 altitude target corrected, and a clear comment that the lat/lon are not the
 published centreline.
 
-**To finish this (needs AIP access):** drop in the GWC 2F / HAZEL 2F waypoint
-fixes from the EGLF AIP SID chart (or a Navigraph export) and replace the
-`centreline` points. The shape and altitude are the right ballpark today; only the
+**To finish this (needs AIP/WebTrak access from a normal network):** see the
+step-by-step handoff in [`CORRIDOR-DATA-EXTRACTION.md`](./CORRIDOR-DATA-EXTRACTION.md)
+— extract the SID geometry from Farnborough WebTrak (`eu.webtrak.aero/fab`, layers
+are GeoJSON) or the EGLF AIP chart, then drop the centrelines into
+`config/corridors.ts`. The shape and altitude are the right ballpark today; only the
 precise lateral track is approximate, and R3 is labelled indicative accordingly.
 
 **Sources:**

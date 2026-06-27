@@ -26,7 +26,9 @@ export const CORRIDORS: Corridor[] = [
     id: 'EGLF-RW24-SOUTH-DEP',
     airport: 'EGLF',
     label: 'Farnborough Rwy 24 departures (GWC 2F / HAZEL 2F SIDs)',
-    // STILL APPROXIMATE. Confirmed from CAA/airport sources (June 2026): the Rwy 24
+    // STILL APPROXIMATE — to replace with real WebTrak/AIP geometry, follow
+    // docs/CORRIDOR-DATA-EXTRACTION.md.
+    // Confirmed from CAA/airport sources (June 2026): the Rwy 24
     // SIDs are GWC 2F and HAZEL 2F; they climb southwest toward Bentley and the A31,
     // reaching at/above 4,000 ft over the A31 Hog's Back. The exact RNAV waypoint
     // coordinates live in the gated UK AIP / chart providers and could not be
