@@ -39,37 +39,49 @@ desktop and tap **Run direct fetch**. It reports SUCCESS (CORS allowed) or
 BLOCKED (no `Access-Control-Allow-Origin`). You can also run it locally with
 `npm run dev` → open `/spike.html`.
 
-**Expected outcome & decision:** the community ADS-B feeds are documented as
-rate-limited (~1 req/s) and not reliably CORS-enabled, which is exactly why the
-build plan makes the **Worker proxy the default**. We proceed on the proxy
-regardless of the spike result:
+**Empirical result (run from the deployed spike page):** **SUCCESS — CORS
+allowed.** A direct browser `fetch()` to
+`https://api.airplanes.live/v2/point/{lat}/{lon}/{radius}` returns 200 with a
+usable body; the feed sends a permissive `Access-Control-Allow-Origin`, so the
+browser does not block it.
 
-- If the spike says **BLOCKED** → proxy is required. (Expected.)
-- If the spike says **SUCCESS** → the Worker becomes an optional cache /
-  rate-limit-smoothing / enrichment layer, but we still route through it so we
-  keep one code path, server-side route enrichment (Phase 3), and a place to
-  hide any future API key.
+**Decision: keep the Worker proxy as the default anyway.** Direct calls working
+makes the Worker *optional* for raw fetches, but we still route the front-end
+through it because it earns its place on the other three problems the build plan
+called out:
 
-Please run the spike and tell me the result — it's recorded here either way, but
-it doesn't block Phase 1's design.
+- **Rate limits** — airplanes.live is ~1 req/s; the Worker's ~8s edge cache
+  smooths bursts and shields the feed (and us) from throttling.
+- **Route enrichment (Phase 3)** — adsb.lol `routeset` lookups are cleaner
+  batched server-side than fanned out from the browser.
+- **Future API keys / fallback** — the Worker is the one place to hide a key and
+  to fail over to adsb.lol, keeping a single front-end code path.
+
+So the spike result is good news (no hard CORS dependency, and a viable
+direct-call fallback if the Worker ever has issues), but it does **not** change
+the architecture: front-end → Worker → feeds.
 
 ## Definition of Done
 
 | DoD item | State |
 |---|---|
-| Blank app deploys to `https://kieranhj.github.io/fight-or-flight/` | Workflow ready; deploys on push to `main` (needs Pages enabled, see below). |
-| Worker reachable | `GET /api/nearby` + `/health` verified locally with CORS headers; deploy with `npm run worker:deploy`. |
-| CORS decision documented | This file. Proxy is the default; browser spike page provided for the empirical check. |
+| Blank app deploys to `https://kieranhj.github.io/fight-or-flight/` | ✅ Deployed via GitHub Actions on push to `main`. |
+| Worker reachable | ✅ Deployed to `https://aircraft-complaint-proxy.kieranhj.workers.dev` (CI via Wrangler); `/health` + `/api/nearby` serve with CORS. |
+| CORS decision documented | ✅ Spike returned **SUCCESS** (direct calls allowed); Worker proxy kept as default for rate-limit/enrichment/fallback. See above. |
 
-## To finish wiring (one-time, needs your GitHub/Cloudflare access)
+## How it was wired up (record of the one-time setup)
 
-1. **Enable Pages**: repo *Settings → Pages → Build and deployment → Source =
-   GitHub Actions*. Then merge this to `main` (or run the workflow) to publish.
-2. **Deploy the Worker**: `npx wrangler login && npm run worker:deploy`.
-3. **Point the site at the Worker**: set repo *Settings → Secrets and variables
-   → Actions → Variables → `VITE_WORKER_BASE`* to the deployed
-   `https://aircraft-complaint-proxy.<account>.workers.dev` URL, then re-run the
-   deploy. (Until then the built site targets the local dev Worker address.)
+1. **Pages**: repo *Settings → Pages → Source = GitHub Actions*; deploys on push
+   to `main` via `.github/workflows/deploy.yml`.
+2. **Worker**: deployed from CI by `.github/workflows/deploy-worker.yml` using a
+   Cloudflare API token (`CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` repo
+   secrets) — no local `wrangler login` needed. Required registering the
+   account's workers.dev subdomain (`kieranhj`) once in the Cloudflare dashboard.
+3. **Site → Worker link**: repo *Settings → Secrets and variables → Actions →
+   Variables → `VITE_WORKER_BASE`* set to
+   `https://aircraft-complaint-proxy.kieranhj.workers.dev`, then re-run the Pages
+   deploy. The Worker base is resolved robustly (empty → localhost fallback,
+   scheme auto-prepended, trailing slash stripped) in `src/config/api.ts`.
 
 ## Verified locally
 
