@@ -27,9 +27,13 @@ each phase's Definition of Done for review.
   for real (normalize → filter → sort → trim → ~8s cache → adsb.lol fallback);
   one tap → GPS → distance-sorted FlightCards. See
   [`docs/PHASE-1-NOTES.md`](./docs/PHASE-1-NOTES.md).
-- **Phase 2 — Map: complete, pending review.** Leaflet map with your position +
-  accuracy ring and heading-rotated aircraft markers; tap a marker or card for a
-  full telemetry detail sheet. See [`docs/PHASE-2-NOTES.md`](./docs/PHASE-2-NOTES.md).
+- **Phase 2 — Map: ✅ done.** Leaflet map with your position + accuracy ring and
+  heading-rotated aircraft markers; tap a marker or card for a full telemetry detail
+  sheet. See [`docs/PHASE-2-NOTES.md`](./docs/PHASE-2-NOTES.md).
+- **Phase 3 — Classification: complete, pending review.** Worker enriches flights
+  with adsb.lol route data; `classify.ts` tags each as Farnborough/Heathrow/Gatwick
+  (route-confirmed or indicative-by-proximity) or transit/unknown — labelled, never
+  guessed. See [`docs/PHASE-3-NOTES.md`](./docs/PHASE-3-NOTES.md).
 
 ## Develop
 

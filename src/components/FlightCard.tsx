@@ -8,6 +8,8 @@ import {
   formatDistance,
   formatBearing,
 } from '../lib/format'
+import { classifyFlight } from '../lib/classify'
+import AirportTag from './AirportTag'
 
 function Stat({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
@@ -45,6 +47,9 @@ export default function FlightCard({
         <div className="min-w-0">
           <div className="truncate text-base font-bold text-white">{flightTitle(flight)}</div>
           <div className="truncate text-xs text-slate-400">{flightSubtitle(flight)}</div>
+          <div className="mt-1.5">
+            <AirportTag classification={classifyFlight(flight)} />
+          </div>
         </div>
         <div className="shrink-0 text-right">
           <div className="text-base font-bold tabular-nums text-sky-400">
