@@ -1,0 +1,10 @@
+name = "aircraft-complaint-proxy"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+# Deploy with:  npm run worker:deploy   (wrangler deploy --config worker/wrangler.toml)
+# Local dev:    npm run worker:dev       (serves on http://127.0.0.1:8787)
+
+# Optionally lock CORS to your Pages origin once known, e.g.
+# [vars]
+# ALLOWED_ORIGIN = "https://kieranhj.github.io"
