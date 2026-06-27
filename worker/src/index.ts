@@ -148,7 +148,9 @@ function normalize(ac: RawAircraft): NormalizedFlight {
 // the /api/route diagnostic probes all of them so we can pick one that works from
 // the deployed Worker.
 type RouteProvider = 'adsbdb' | 'adsblol' | 'hexdb'
-const ROUTE_PROVIDER: RouteProvider = 'adsbdb'
+// hexdb is the one reachable from Cloudflare's shared egress IPs without being
+// rate-limited (adsbdb 429s the IP; adsb.lol routeset returns 201/empty for us).
+const ROUTE_PROVIDER: RouteProvider = 'hexdb'
 
 const ROUTE_CACHE_TTL = 21_600 // 6h for a known route
 const ROUTE_NEG_TTL = 1_800 // 30m for an unknown callsign
@@ -165,10 +167,14 @@ async function fetchProvider(provider: RouteProvider, cs: string): Promise<Provi
     const body = await res.text()
     let route: FlightRoute | null = null
     try {
+      // hexdb returns e.g. {"flight":"BAW117","route":"EGLL-KJFK",...}; multi-leg
+      // routes look like "EGKK-LEMG-EGKK" — take first origin and final destination.
       const r = (JSON.parse(body) as { route?: string }).route
-      if (r && r.includes('-') && !/unknown/i.test(r)) {
-        const [o, d] = r.split('-')
-        route = { originIcao: o || null, destinationIcao: d || null, originLabel: o || null, destinationLabel: d || null }
+      const parts = r ? r.split('-').filter(Boolean) : []
+      if (parts.length >= 2 && !/unknown/i.test(r ?? '')) {
+        const o = parts[0]
+        const d = parts[parts.length - 1]
+        route = { originIcao: o, destinationIcao: d, originLabel: o, destinationLabel: d }
       }
     } catch { /* body shown in diagnostic */ }
     return { status: res.status, route, body }

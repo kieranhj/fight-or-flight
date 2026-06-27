@@ -13,10 +13,13 @@ and keeps room for server-side route enrichment and future API keys.
 | `GET` | `/health` | Liveness JSON. |
 | `OPTIONS` | `*` | CORS preflight (204). |
 
-Routes are looked up per-callsign from **adsbdb.com** (free, no key) and cached at
-the edge — positive hits for ~6 h, "unknown callsign" for ~30 min. Raw ADS-B has no
-origin/destination, so this database lookup is what populates the route (much like
-how FR24 shows it). Business jets often have no schedule and will show no route.
+Routes are looked up per-callsign from a route database (`ROUTE_PROVIDER`, default
+**hexdb.io**) and cached at the edge — positive hits for ~6 h, "unknown callsign"
+for ~30 min — with a 5-minute global backoff if the provider 429s us. Raw ADS-B has
+no origin/destination, so this lookup is what populates the route (like FR24).
+Business jets often have no schedule and will show no route. `GET /api/route` probes
+all candidate providers (adsbdb, adsb.lol, hexdb) so a working one can be selected —
+adsbdb rate-limits Cloudflare's shared egress IPs, which is why hexdb is the default.
 
 Phase 1 replaces the `/api/nearby` stub body with a real call to
 `api.airplanes.live/v2/point/{lat}/{lon}/{radius}`: normalize fields, sort by
