@@ -201,8 +201,8 @@ export default function App() {
               ))}
             </ul>
             <p className="mt-3 text-[11px] text-slate-600">
-              Data via airplanes.live / adsb.lol; map © OpenStreetMap contributors. Used under their
-              terms.
+              Aircraft data via airplanes.live / adsb.lol; routes via adsbdb.com; map © OpenStreetMap
+              contributors. Used under their terms.
             </p>
           </footer>
         </div>

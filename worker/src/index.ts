@@ -55,7 +55,7 @@ type NormalizedFlight = {
   distanceNm: number | null
   bearingDeg: number | null
   onGround: boolean
-  /** Origin/destination from adsb.lol routeset; null when unknown. */
+  /** Origin/destination from the route lookup (adsbdb.com); null when unknown. */
   route: FlightRoute | null
 }
 
@@ -136,67 +136,90 @@ function normalize(ac: RawAircraft): NormalizedFlight {
   }
 }
 
-// ── Route enrichment (adsb.lol routeset) ─────────────────────────────────────
-type RoutesetAirport = { icao?: string; iata?: string; name?: string }
-type RoutesetItem = {
-  callsign?: string
-  plane_found?: boolean
-  _airports?: RoutesetAirport[]
+// ── Route enrichment (adsbdb.com) ────────────────────────────────────────────
+// Raw ADS-B carries no origin/destination — those come from a callsign→route
+// database. adsbdb is free, no key, well-documented and stable. We look up each
+// callsign (GET /v0/callsign/{cs}) and cache the result at the edge: routes are
+// static, so positive hits cache for hours and dedupe load across taps; "unknown"
+// callsigns cache briefly so we don't re-hit for traffic with no schedule (e.g.
+// many business jets — same as FR24 often showing no route for them).
+type AdsbdbAirport = {
+  icao_code?: string
+  iata_code?: string
+  name?: string
+  municipality?: string
+}
+type AdsbdbResponse = {
+  response?: { flightroute?: { origin?: AdsbdbAirport; destination?: AdsbdbAirport } }
 }
 
-function airportLabel(a: RoutesetAirport | undefined): string | null {
+const ROUTE_CACHE_TTL = 21_600 // 6h for a known route
+const ROUTE_NEG_TTL = 1_800 // 30m for an unknown callsign
+
+function airportLabel(a: AdsbdbAirport | undefined): string | null {
   if (!a) return null
-  return a.iata ?? a.name ?? a.icao ?? null
+  return a.iata_code ?? a.municipality ?? a.name ?? a.icao_code ?? null
 }
 
-/**
- * Look up origin/destination for the given flights in one batched routeset call.
- * Best-effort: any failure leaves routes null rather than failing the request.
- * Mutates `flights` in place (only those with a callsign and a position).
- */
-async function enrichRoutes(flights: NormalizedFlight[]): Promise<void> {
-  const planes = flights
-    .filter((f) => f.callsign && f.lat != null && f.lon != null)
-    .map((f) => ({ callsign: f.callsign as string, lat: f.lat as number, lng: f.lon as number }))
-  if (planes.length === 0) return
+/** Look up one callsign's route, with edge caching (positive long, negative short). */
+async function lookupRoute(callsign: string, ctx: ExecutionContext): Promise<FlightRoute | null> {
+  const cs = callsign.trim().toUpperCase()
+  if (!cs) return null
+  const cache = caches.default
+  const key = new Request(`https://cache.local/route/${encodeURIComponent(cs)}`)
+  const hit = await cache.match(key)
+  if (hit) return ((await hit.json()) as { route: FlightRoute | null }).route
 
-  let items: RoutesetItem[]
+  let route: FlightRoute | null = null
+  let ttl = ROUTE_NEG_TTL
   try {
-    const res = await fetch('https://api.adsb.lol/api/0/routeset', {
-      method: 'POST',
+    const res = await fetch(`https://api.adsbdb.com/v0/callsign/${encodeURIComponent(cs)}`, {
       headers: {
-        'Content-Type': 'application/json',
         Accept: 'application/json',
         'User-Agent': 'fight-or-flight (+github.com/kieranhj/fight-or-flight)',
       },
-      body: JSON.stringify({ planes }),
     })
-    if (!res.ok) return
-    items = (await res.json()) as RoutesetItem[]
-  } catch {
-    return
-  }
-  if (!Array.isArray(items)) return
-
-  const byCallsign = new Map<string, RoutesetItem>()
-  for (const it of items) {
-    if (it.callsign) byCallsign.set(it.callsign.trim(), it)
-  }
-
-  for (const f of flights) {
-    if (!f.callsign) continue
-    const it = byCallsign.get(f.callsign)
-    const airports = it?._airports
-    if (!it?.plane_found || !airports || airports.length === 0) continue
-    const origin = airports[0]
-    const destination = airports[airports.length - 1]
-    f.route = {
-      originIcao: origin?.icao ?? null,
-      destinationIcao: destination?.icao ?? null,
-      originLabel: airportLabel(origin),
-      destinationLabel: airportLabel(destination),
+    if (res.ok) {
+      const fr = ((await res.json()) as AdsbdbResponse).response?.flightroute
+      if (fr && (fr.origin || fr.destination)) {
+        route = {
+          originIcao: fr.origin?.icao_code ?? null,
+          destinationIcao: fr.destination?.icao_code ?? null,
+          originLabel: airportLabel(fr.origin),
+          destinationLabel: airportLabel(fr.destination),
+        }
+        ttl = ROUTE_CACHE_TTL
+      }
+    } else if (res.status !== 404) {
+      return null // transient upstream error — don't cache, allow a later retry
     }
+  } catch {
+    return null
   }
+
+  ctx.waitUntil(
+    cache.put(
+      key,
+      new Response(JSON.stringify({ route }), {
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${ttl}` },
+      }),
+    ),
+  )
+  return route
+}
+
+/**
+ * Fill origin/destination for each flight with a callsign (parallel, cached).
+ * Best-effort: failures leave a flight's route null rather than failing the request.
+ */
+async function enrichRoutes(flights: NormalizedFlight[], ctx: ExecutionContext): Promise<void> {
+  await Promise.all(
+    flights
+      .filter((f) => f.callsign)
+      .map(async (f) => {
+        f.route = await lookupRoute(f.callsign as string, ctx)
+      }),
+  )
 }
 
 // ── Upstream feeds ───────────────────────────────────────────────────────────
@@ -307,8 +330,8 @@ async function handleNearby(url: URL, env: Env, ctx: ExecutionContext): Promise<
     })
     .slice(0, n)
 
-  // Enrich only the trimmed list (≤ n) with route data — one batched call.
-  await enrichRoutes(flights)
+  // Enrich only the trimmed list (≤ n) with route data (parallel, edge-cached).
+  await enrichRoutes(flights, ctx)
 
   const payload = {
     query: { lat, lon, radiusNm, n },
@@ -335,6 +358,14 @@ export default {
     if (url.pathname === '/api/nearby') {
       if (request.method !== 'GET') return json({ error: 'Method not allowed' }, env, 405)
       return handleNearby(url, env, ctx)
+    }
+
+    // Diagnostic: GET /api/route?callsign=BAW117 → the route we resolve for a callsign.
+    if (url.pathname === '/api/route') {
+      const cs = url.searchParams.get('callsign')
+      if (!cs) return json({ error: 'callsign query param required' }, env, 400)
+      const route = await lookupRoute(cs, ctx)
+      return json({ callsign: cs.trim().toUpperCase(), route }, env)
     }
 
     if (url.pathname === '/' || url.pathname === '/health') {
