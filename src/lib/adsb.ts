@@ -53,6 +53,8 @@ export type NearbyParams = {
   lon: number
   radiusNm?: number
   n?: number
+  /** Opt-ins to include normally-filtered categories (default: all off). */
+  include?: { military?: boolean; rotorcraft?: boolean; light?: boolean }
   signal?: AbortSignal
 }
 
@@ -62,6 +64,7 @@ export async function fetchNearby({
   lon,
   radiusNm = NEARBY_DEFAULTS.radiusNm,
   n = NEARBY_DEFAULTS.n,
+  include,
   signal,
 }: NearbyParams): Promise<NearbyResponse> {
   const url = new URL(NEARBY_ENDPOINT)
@@ -69,6 +72,9 @@ export async function fetchNearby({
   url.searchParams.set('lon', String(lon))
   url.searchParams.set('radius', String(radiusNm))
   url.searchParams.set('n', String(n))
+  if (include?.military) url.searchParams.set('mil', '1')
+  if (include?.rotorcraft) url.searchParams.set('rotor', '1')
+  if (include?.light) url.searchParams.set('light', '1')
 
   const res = await fetch(url, { signal })
   if (!res.ok) {

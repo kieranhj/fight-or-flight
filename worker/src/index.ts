@@ -17,13 +17,16 @@ export interface Env {
 }
 
 // ── Exclusion filters ───────────────────────────────────────────────────────
-// MUST mirror src/config/filters.ts (kept here so the Worker stays self-contained
-// and independently deployable). v1: keep fixed-wing jets (A2–A5/A6), drop
-// military, rotorcraft (A7) and very light / hobbyist GA (A1).
-const EXCLUDED_CATEGORIES = new Set(['A1', 'A7'])
-const EXCLUDE_MILITARY = true
-const EXCLUDE_ON_GROUND = true // app is about overhead noise; drop parked/taxiing traffic
+// Defaults mirror src/config/filters.ts (kept here so the Worker stays
+// self-contained). By default we keep fixed-wing jets (A2–A6) and drop military,
+// rotorcraft (A7) and very light / hobbyist GA (A1). The client can opt these
+// categories back IN per-request via query params (see FilterOpts) — on-ground
+// traffic is always dropped (the app is about overhead noise).
+const EXCLUDE_ON_GROUND = true
 const EXCLUDED_TYPE_CODES = new Set<string>([]) // e.g. add light-GA ICAO type codes
+
+/** Per-request opt-ins to include normally-filtered categories (default: all off). */
+type FilterOpts = { includeMilitary: boolean; includeRotorcraft: boolean; includeLight: boolean }
 
 // ── Normalized output shape (mirror of src/lib/adsb.ts NormalizedFlight) ─────
 type FlightRoute = {
@@ -98,11 +101,12 @@ function isMilitary(ac: RawAircraft): boolean {
   return typeof flags === 'number' && (flags & 1) === 1
 }
 
-function isExcluded(ac: RawAircraft): boolean {
-  if (EXCLUDE_MILITARY && isMilitary(ac)) return true
+function isExcluded(ac: RawAircraft, opts: FilterOpts): boolean {
   if (EXCLUDE_ON_GROUND && ac.alt_baro === 'ground') return true
+  if (!opts.includeMilitary && isMilitary(ac)) return true
   const cat = str(ac.category)?.toUpperCase()
-  if (cat && EXCLUDED_CATEGORIES.has(cat)) return true
+  if (cat === 'A7' && !opts.includeRotorcraft) return true // rotorcraft
+  if (cat === 'A1' && !opts.includeLight) return true // light / hobbyist GA
   const type = str(ac.t)?.toUpperCase()
   if (type && EXCLUDED_TYPE_CODES.has(type)) return true
   return false
@@ -255,11 +259,18 @@ async function handleNearby(url: URL, env: Env, ctx: ExecutionContext): Promise<
   // airplanes.live allows up to 250 nm; keep N sane.
   const radiusNm = clamp(Number(url.searchParams.get('radius') ?? '10') || 10, 1, 250)
   const n = clamp(Math.trunc(Number(url.searchParams.get('n') ?? '8') || 8), 1, 50)
+  const filterOpts: FilterOpts = {
+    includeMilitary: url.searchParams.get('mil') === '1',
+    includeRotorcraft: url.searchParams.get('rotor') === '1',
+    includeLight: url.searchParams.get('light') === '1',
+  }
 
   // Canonical cache key: round the position so nearby taps share a cached result.
+  // Filter opt-ins change the result set, so they're part of the key.
   const rLat = lat.toFixed(3)
   const rLon = lon.toFixed(3)
-  const baseKey = `https://cache.local/api/nearby?lat=${rLat}&lon=${rLon}&radius=${radiusNm}&n=${n}`
+  const f = `${filterOpts.includeMilitary ? 1 : 0}${filterOpts.includeRotorcraft ? 1 : 0}${filterOpts.includeLight ? 1 : 0}`
+  const baseKey = `https://cache.local/api/nearby?lat=${rLat}&lon=${rLon}&radius=${radiusNm}&n=${n}&f=${f}`
   const cacheKey = new Request(baseKey)
   // Longer-lived copy of the last good result, served if the feeds blip.
   const staleKey = new Request(`${baseKey}&stale=1`)
@@ -286,7 +297,7 @@ async function handleNearby(url: URL, env: Env, ctx: ExecutionContext): Promise<
   }
 
   const flights = upstream.aircraft
-    .filter((ac) => !isExcluded(ac))
+    .filter((ac) => !isExcluded(ac, filterOpts))
     .map(normalize)
     .sort((a, b) => {
       // Closest first; nulls last.

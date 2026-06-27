@@ -11,6 +11,9 @@ export type Units = { alt: AltUnit; dist: DistUnit; speed: SpeedUnit }
 
 export type LocationMode = 'gps' | 'home'
 
+/** Opt-ins to show normally-filtered traffic (all default off). */
+export type IncludeFilters = { military: boolean; rotorcraft: boolean; light: boolean }
+
 export type Settings = {
   /** Number of aircraft to show. */
   n: number
@@ -23,6 +26,8 @@ export type Settings = {
   homeFallback: boolean
   homeLat: number
   homeLon: number
+  /** Include categories normally filtered out (military / helicopters / light GA). */
+  include: IncludeFilters
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -33,6 +38,7 @@ export const DEFAULT_SETTINGS: Settings = {
   homeFallback: true,
   homeLat: HOME_LOCATION.lat,
   homeLon: HOME_LOCATION.lon,
+  include: { military: false, rotorcraft: false, light: false },
 }
 
 const KEY = 'foaf.settings'
@@ -50,6 +56,7 @@ export function loadSettings(): Settings {
       ...DEFAULT_SETTINGS,
       ...parsed,
       units: { ...DEFAULT_SETTINGS.units, ...parsed.units },
+      include: { ...DEFAULT_SETTINGS.include, ...parsed.include },
       n: clamp(parsed.n ?? DEFAULT_SETTINGS.n, 1, 20, DEFAULT_SETTINGS.n),
       radiusNm: clamp(parsed.radiusNm ?? DEFAULT_SETTINGS.radiusNm, 1, 50, DEFAULT_SETTINGS.radiusNm),
     }

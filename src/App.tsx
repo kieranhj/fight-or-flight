@@ -14,7 +14,7 @@ import { loadSettings, saveSettings, type Settings } from './lib/settings'
 
 const CONSTRAINTS = [
   'Telemetry comes from free, volunteer ADS-B feeds — no uptime guarantee, and very low or masked aircraft can be missed.',
-  'The list is filtered to airborne fixed-wing jets; military, rotorcraft, light GA and on-ground traffic are removed.',
+  'By default the list shows airborne fixed-wing jets — military, helicopters and light aircraft are filtered out (toggle them on in settings); on-ground traffic is always removed.',
   'Flags are indicative, not proof — operating hours are clear-cut, but altitude and track use approximations and aircraft on approach are legitimately low. Always review before acting.',
 ]
 
@@ -89,6 +89,7 @@ export default function App() {
         lon: p.lon,
         radiusNm: settings.radiusNm,
         n: settings.n,
+        include: settings.include,
         signal: ac.signal,
       })
       if (ac.signal.aborted) return
