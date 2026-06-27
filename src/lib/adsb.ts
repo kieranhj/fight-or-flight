@@ -24,11 +24,11 @@ export type NormalizedFlight = {
   bearingDeg: number | null
   /** True when the feed reported `alt_baro: "ground"`. */
   onGround: boolean
-  /** Origin/destination from adsb.lol routeset (Worker-enriched); null when unknown. */
+  /** Origin/destination from the Worker's route lookup (adsbdb.com); null when unknown. */
   route: FlightRoute | null
 }
 
-/** Origin/destination airports for a flight, from the routeset lookup. */
+/** Origin/destination airports for a flight, from the route-database lookup. */
 export type FlightRoute = {
   originIcao: string | null
   destinationIcao: string | null

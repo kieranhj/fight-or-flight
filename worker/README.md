@@ -8,9 +8,15 @@ and keeps room for server-side route enrichment and future API keys.
 
 | Method | Path | Phase 0 behaviour |
 |---|---|---|
-| `GET` | `/api/nearby?lat&lon&radius&n` | Returns a hard-coded normalized sample with CORS. |
+| `GET` | `/api/nearby?lat&lon&radius&n` | Nearest aircraft: normalize → filter → sort → trim → route-enrich. CORS. |
+| `GET` | `/api/route?callsign=BAW117` | Diagnostic: the origin/destination we resolve for a callsign. |
 | `GET` | `/health` | Liveness JSON. |
 | `OPTIONS` | `*` | CORS preflight (204). |
+
+Routes are looked up per-callsign from **adsbdb.com** (free, no key) and cached at
+the edge — positive hits for ~6 h, "unknown callsign" for ~30 min. Raw ADS-B has no
+origin/destination, so this database lookup is what populates the route (much like
+how FR24 shows it). Business jets often have no schedule and will show no route.
 
 Phase 1 replaces the `/api/nearby` stub body with a real call to
 `api.airplanes.live/v2/point/{lat}/{lon}/{radius}`: normalize fields, sort by
@@ -54,6 +60,9 @@ to be a good citizen:
 - **Identifiable + attributed.** Every upstream request sends a descriptive
   `User-Agent` with this repo's URL, and the UI credits both feeds.
 
+Route lookups (adsbdb.com) are **per-callsign and edge-cached** (positive ~6 h,
+negative ~30 min), so repeated traffic doesn't re-hit the route database.
+
 If usage ever grows beyond personal scale, the next responsible steps would be:
-per-callsign route caching (cut routeset calls), honouring `Retry-After`, and
-feeding data back to the community projects (adsb.lol grants keys "by feeding").
+honouring `Retry-After`, longer/shared route caching, and feeding data back to the
+community projects (adsb.lol grants keys "by feeding").
