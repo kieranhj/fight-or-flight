@@ -4,12 +4,14 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import type { NormalizedFlight } from '../lib/adsb'
 import type { GeoResult } from '../lib/geolocation'
+import { assessFlight, topSeverity } from '../lib/assess'
 
 // Aircraft glyph points north (up) at 0°; we rotate it by the flight's track.
-function planeIcon(track: number | null, selected: boolean): L.DivIcon {
+// Selected = sky-blue (overrides); a possible-breach flight = rose; else slate.
+function planeIcon(track: number | null, selected: boolean, breach: boolean): L.DivIcon {
   const rot = track ?? 0
-  const fill = selected ? '#38bdf8' : '#e2e8f0'
-  const stroke = selected ? '#0c4a6e' : '#0f172a'
+  const fill = selected ? '#38bdf8' : breach ? '#fb7185' : '#e2e8f0'
+  const stroke = selected ? '#0c4a6e' : breach ? '#7f1d1d' : '#0f172a'
   const html = `
     <div style="transform: rotate(${rot}deg); width:28px; height:28px; display:flex; align-items:center; justify-content:center;">
       <svg width="26" height="26" viewBox="0 0 24 24" fill="${fill}" stroke="${stroke}" stroke-width="1" stroke-linejoin="round">
@@ -88,7 +90,11 @@ export default function MapView({
           <Marker
             key={f.hex || `${f.callsign}-${f.lat}-${f.lon}`}
             position={[f.lat, f.lon]}
-            icon={planeIcon(f.track, f.hex === selectedHex)}
+            icon={planeIcon(
+              f.track,
+              f.hex === selectedHex,
+              topSeverity(assessFlight(f).flags) === 'breach',
+            )}
             zIndexOffset={f.hex === selectedHex ? 1000 : 0}
             eventHandlers={{ click: () => onSelect(f) }}
           />

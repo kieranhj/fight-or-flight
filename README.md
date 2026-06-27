@@ -30,10 +30,14 @@ each phase's Definition of Done for review.
 - **Phase 2 — Map: ✅ done.** Leaflet map with your position + accuracy ring and
   heading-rotated aircraft markers; tap a marker or card for a full telemetry detail
   sheet. See [`docs/PHASE-2-NOTES.md`](./docs/PHASE-2-NOTES.md).
-- **Phase 3 — Classification: complete, pending review.** Worker enriches flights
-  with adsb.lol route data; `classify.ts` tags each as Farnborough/Heathrow/Gatwick
-  (route-confirmed or indicative-by-proximity) or transit/unknown — labelled, never
-  guessed. See [`docs/PHASE-3-NOTES.md`](./docs/PHASE-3-NOTES.md).
+- **Phase 3 — Classification: ✅ done.** Worker enriches flights with adsb.lol route
+  data; `classify.ts` tags each as Farnborough/Heathrow/Gatwick (route-confirmed or
+  indicative-by-proximity) or transit/unknown — labelled, never guessed. See
+  [`docs/PHASE-3-NOTES.md`](./docs/PHASE-3-NOTES.md).
+- **Phase 4 — Rules engine v1: complete, pending review.** `rulesEngine.ts` runs R1
+  hours (deterministic breach), R2 altitude-floor and R3 corridor (both indicative)
+  over each classified flight; `FlagBadge` shows severity + a one-line why. See
+  [`docs/PHASE-4-NOTES.md`](./docs/PHASE-4-NOTES.md).
 
 ## Develop
 

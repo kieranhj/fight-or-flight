@@ -39,3 +39,39 @@ export function angularDiff(a: number, b: number): number {
   const d = Math.abs(((a - b + 540) % 360) - 180)
   return d
 }
+
+// Local equirectangular projection to nm (east/north) relative to a reference.
+// Accurate enough at terminal-area scales (a few tens of nm).
+function toXY(p: LatLon, ref: LatLon): { x: number; y: number } {
+  return {
+    x: (p.lon - ref.lon) * Math.cos(toRad(ref.lat)) * 60,
+    y: (p.lat - ref.lat) * 60,
+  }
+}
+
+/** Perpendicular distance (nm) from a point to a single segment a→b. */
+function pointToSegmentNm(p: LatLon, a: LatLon, b: LatLon): number {
+  const P = toXY(p, p) // origin
+  const A = toXY(a, p)
+  const B = toXY(b, p)
+  const abx = B.x - A.x
+  const aby = B.y - A.y
+  const lenSq = abx * abx + aby * aby
+  let t = lenSq === 0 ? 0 : ((P.x - A.x) * abx + (P.y - A.y) * aby) / lenSq
+  t = Math.max(0, Math.min(1, t))
+  const cx = A.x + t * abx
+  const cy = A.y + t * aby
+  return Math.hypot(P.x - cx, P.y - cy)
+}
+
+/** Minimum lateral distance (nm) from a point to a polyline (its nearest segment). */
+export function distanceToPolylineNm(p: LatLon, polyline: LatLon[]): number {
+  if (polyline.length === 0) return Infinity
+  if (polyline.length === 1) return haversineNm(p, polyline[0])
+  let min = Infinity
+  for (let i = 0; i < polyline.length - 1; i++) {
+    const d = pointToSegmentNm(p, polyline[i], polyline[i + 1])
+    if (d < min) min = d
+  }
+  return min
+}

@@ -8,8 +8,9 @@ import {
   formatDistance,
   formatBearing,
 } from '../lib/format'
-import { classifyFlight } from '../lib/classify'
+import { assessFlight } from '../lib/assess'
 import AirportTag from './AirportTag'
+import FlagBadge from './FlagBadge'
 
 const DASH = '—'
 
@@ -30,7 +31,7 @@ export default function FlightDetail({
   onClose: () => void
 }) {
   const vs = formatVerticalRate(flight.verticalRateFpm)
-  const classification = classifyFlight(flight)
+  const { classification, flags } = assessFlight(flight)
   const coords =
     flight.lat != null && flight.lon != null
       ? `${flight.lat.toFixed(4)}, ${flight.lon.toFixed(4)}`
@@ -71,6 +72,23 @@ export default function FlightDetail({
           <p className="text-xs leading-relaxed text-slate-400">{classification.reason}</p>
         </div>
 
+        {flags.length > 0 && (
+          <div className="mb-3 space-y-2">
+            <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">
+              Flags
+            </span>
+            {flags.map((f) => (
+              <div
+                key={f.ruleId}
+                className="rounded-lg border border-slate-800 bg-slate-800/40 p-2.5"
+              >
+                <FlagBadge flag={f} />
+                <p className="mt-1.5 text-xs leading-relaxed text-slate-400">{f.reason}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-x-6">
           <Row label="Distance" value={formatDistance(flight.distanceNm)} />
           <Row label="Bearing" value={formatBearing(flight.bearingDeg)} />
@@ -101,8 +119,8 @@ export default function FlightDetail({
         </div>
 
         <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
-          Telemetry from volunteer ADS-B feeds — indicative, and may be incomplete. Rule flags and
-          complaint generation arrive in later phases.
+          Telemetry from volunteer ADS-B feeds — indicative, and may be incomplete. Flags are a
+          guide, not proof: review before acting. One-tap complaint generation arrives next phase.
         </p>
       </div>
     </div>
