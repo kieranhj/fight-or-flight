@@ -12,6 +12,7 @@ import { assessFlight } from '../lib/assess'
 import { useSettings } from './SettingsContext'
 import AirportTag from './AirportTag'
 import FlagBadge from './FlagBadge'
+import KindTag from './KindTag'
 
 function Stat({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
@@ -52,6 +53,7 @@ export default function FlightCard({
           <div className="truncate text-base font-bold text-white">{flightTitle(flight)}</div>
           <div className="truncate text-xs text-slate-400">{flightSubtitle(flight)}</div>
           <div className="mt-1.5 flex flex-wrap gap-1.5">
+            <KindTag flight={flight} />
             <AirportTag classification={classification} />
             {flags.map((f) => (
               <FlagBadge key={f.ruleId} flag={f} />

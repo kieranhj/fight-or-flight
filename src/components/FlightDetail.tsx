@@ -13,6 +13,7 @@ import { assessFlight } from '../lib/assess'
 import { useSettings } from './SettingsContext'
 import AirportTag from './AirportTag'
 import FlagBadge from './FlagBadge'
+import KindTag from './KindTag'
 
 const DASH = '—'
 
@@ -58,6 +59,9 @@ export default function FlightDetail({
           <div className="min-w-0">
             <div className="truncate text-lg font-bold text-white">{flightTitle(flight)}</div>
             <div className="truncate text-xs text-slate-400">{flightSubtitle(flight)}</div>
+            <div className="mt-1.5">
+              <KindTag flight={flight} />
+            </div>
           </div>
           <button
             onClick={onClose}

@@ -24,7 +24,9 @@ export type NormalizedFlight = {
   bearingDeg: number | null
   /** True when the feed reported `alt_baro: "ground"`. */
   onGround: boolean
-  /** Origin/destination from the Worker's route lookup (adsbdb.com); null when unknown. */
+  /** True if the feed flags this as a military airframe. */
+  military: boolean
+  /** Origin/destination from the Worker's route lookup; null when unknown. */
   route: FlightRoute | null
 }
 

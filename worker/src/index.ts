@@ -58,6 +58,8 @@ type NormalizedFlight = {
   distanceNm: number | null
   bearingDeg: number | null
   onGround: boolean
+  /** True if the feed flags this as a military airframe (dbFlags bit 0). */
+  military: boolean
   /** Origin/destination from the route lookup (adsbdb.com); null when unknown. */
   route: FlightRoute | null
 }
@@ -135,6 +137,7 @@ function normalize(ac: RawAircraft): NormalizedFlight {
     distanceNm: num(ac.dst),
     bearingDeg: num(ac.dir),
     onGround,
+    military: isMilitary(ac),
     route: null, // filled in by enrichRoutes() after sort/trim
   }
 }
