@@ -77,7 +77,15 @@ function aircraftIcon(f: NormalizedFlight, selected: boolean, breach: boolean): 
         : '#e2e8f0'
   const stroke = selected ? '#0c4a6e' : breach ? '#7f1d1d' : '#0f172a'
   const rot = f.track ?? 0
-  const size = kind === 'large-jet' ? 30 : kind === 'light' ? 22 : 26
+  const SIZE: Partial<Record<typeof kind, number>> = {
+    light: 22,
+    'small-jet': 24,
+    'fast-jet': 24,
+    'medium-jet': 27,
+    'large-jet': 30,
+    'heavy-jet': 33,
+  }
+  const size = SIZE[kind] ?? 26
 
   let glyph: string
   if (kind === 'helicopter') {

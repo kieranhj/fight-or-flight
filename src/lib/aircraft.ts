@@ -2,13 +2,18 @@ import type { NormalizedFlight } from './adsb'
 
 // A coarse aircraft class for at-a-glance tagging, derived from the military flag
 // and the ADS-B emitter category (A1–A7). Indicative — category isn't always
-// broadcast, and "small/large jet" is an approximation from the category band.
+// broadcast. The size tiers follow the category weight bands but use intuitive
+// labels: A3 (34–136 t) spans large biz jets and narrowbody airliners, so it
+// reads as "medium"; A4 (B757-class) is "large"; A5 (widebodies) is "heavy".
 export type AircraftKind =
   | 'military'
   | 'helicopter'
   | 'light'
   | 'small-jet'
+  | 'medium-jet'
   | 'large-jet'
+  | 'heavy-jet'
+  | 'fast-jet'
   | 'other'
 
 export function aircraftKind(f: NormalizedFlight): AircraftKind {
@@ -19,12 +24,15 @@ export function aircraftKind(f: NormalizedFlight): AircraftKind {
     case 'A1':
       return 'light'
     case 'A2':
-    case 'A6': // small / high-performance
       return 'small-jet'
     case 'A3':
+      return 'medium-jet' // large biz jets (G650/Global) ↔ narrowbody airliners (A320/737)
     case 'A4':
-    case 'A5': // large / heavy
-      return 'large-jet'
+      return 'large-jet' // high-vortex large, e.g. B757
+    case 'A5':
+      return 'heavy-jet' // widebodies, e.g. B777/A350/B747
+    case 'A6':
+      return 'fast-jet' // high-performance (>5g, >400 kt)
     default:
       return 'other'
   }
@@ -35,6 +43,9 @@ export const KIND_LABEL: Record<AircraftKind, string> = {
   helicopter: 'Helicopter',
   light: 'Light aircraft',
   'small-jet': 'Small jet',
+  'medium-jet': 'Medium jet',
   'large-jet': 'Large jet',
+  'heavy-jet': 'Heavy jet',
+  'fast-jet': 'Fast jet',
   other: 'Aircraft',
 }
