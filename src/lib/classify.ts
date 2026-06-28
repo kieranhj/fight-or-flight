@@ -12,12 +12,12 @@ export type ClassifyBasis = 'route' | 'proximity' | 'callsign' | 'unknown'
 
 /**
  * Coarse group for display filtering:
- *  - 'ours'       belongs to Farnborough/Heathrow/Gatwick
+ *  - an airport ICAO (EGLF/EGLL/EGKK) when it belongs to one of ours
  *  - 'transit'    known route, but between other airports (passing over)
  *  - 'overflight' unknown but high altitude (passing over)
  *  - 'unknown'    unknown and not high / not in a terminal area
  */
-export type FlightGroup = 'ours' | 'transit' | 'overflight' | 'unknown'
+export type FlightGroup = Airport['icao'] | 'transit' | 'overflight' | 'unknown'
 
 export type Classification = {
   /** Owning airport, or null for transit/unknown. */
@@ -59,7 +59,7 @@ export function classifyFlight(f: NormalizedFlight): Classification {
         airport: match,
         label: AIRPORTS[match].name,
         basis: 'route',
-        group: 'ours',
+        group: match,
         indicative: false,
         reason: arriving
           ? `Route ${route.originLabel ?? '?'} → ${AIRPORTS[match].name} — arriving.`
@@ -107,7 +107,7 @@ export function classifyFlight(f: NormalizedFlight): Classification {
         airport: nearest.airport.icao,
         label: nearest.airport.name,
         basis: 'proximity',
-        group: 'ours',
+        group: nearest.airport.icao,
         indicative: true,
         reason: `${nearest.dNm.toFixed(1)} nm from ${nearest.airport.name}${altNote}${phase}. No route data — position-based guess.`,
       }
@@ -123,7 +123,7 @@ export function classifyFlight(f: NormalizedFlight): Classification {
         airport: hint.airport,
         label: AIRPORTS[hint.airport].name,
         basis: 'callsign',
-        group: 'ours',
+        group: hint.airport,
         indicative: true,
         reason: `Callsign prefix “${hint.prefix}” is associated with ${AIRPORTS[hint.airport].name}.`,
       }

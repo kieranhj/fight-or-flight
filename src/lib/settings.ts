@@ -1,5 +1,6 @@
 import { NEARBY_DEFAULTS } from '../config/api'
 import { HOME_LOCATION } from '../config/airports'
+import type { FlightGroup } from './classify'
 
 // User-configurable settings (Phase 6), persisted to localStorage. Defaults come
 // from config so the seed values stay in one place.
@@ -14,13 +15,9 @@ export type LocationMode = 'gps' | 'home'
 /** Opt-ins to show normally-filtered traffic (all default off). */
 export type IncludeFilters = { military: boolean; rotorcraft: boolean; light: boolean }
 
-/** Which classification groups to show (all default on). */
-export type ShowGroups = {
-  ours: boolean
-  transit: boolean
-  overflight: boolean
-  unknown: boolean
-}
+/** Which classification groups to show (all default on). Keyed by FlightGroup
+ * (the three airport ICAOs plus transit / overflight / unknown). */
+export type ShowGroups = Record<FlightGroup, boolean>
 
 export type Settings = {
   /** Number of aircraft to show. */
@@ -55,7 +52,7 @@ export const DEFAULT_SETTINGS: Settings = {
   homeLat: HOME_LOCATION.lat,
   homeLon: HOME_LOCATION.lon,
   include: { military: false, rotorcraft: false, light: false },
-  showGroups: { ours: true, transit: true, overflight: true, unknown: true },
+  showGroups: { EGLF: true, EGLL: true, EGKK: true, transit: true, overflight: true, unknown: true },
   showCorridors: true,
   autoRefresh: false,
   autoRefreshSec: 10,
