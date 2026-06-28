@@ -5,6 +5,7 @@ import 'leaflet/dist/leaflet.css'
 import type { NormalizedFlight } from '../lib/adsb'
 import type { GeoResult } from '../lib/geolocation'
 import { assessFlight, topSeverity } from '../lib/assess'
+import { aircraftKind } from '../lib/aircraft'
 import { useSettings } from './SettingsContext'
 import { CORRIDORS, type CorridorKind } from '../config/corridors'
 import { corridorSwath } from '../lib/geo'
@@ -57,22 +58,46 @@ function CorridorOverlay() {
 }
 
 // Aircraft glyph points north (up) at 0°; we rotate it by the flight's track.
-// Selected = sky-blue (overrides); a possible-breach flight = rose; else slate.
-function planeIcon(track: number | null, selected: boolean, breach: boolean): L.DivIcon {
-  const rot = track ?? 0
-  const fill = selected ? '#38bdf8' : breach ? '#fb7185' : '#e2e8f0'
+const PLANE_PATH =
+  'M12 2 L13.4 11 L21 15 L21 17 L13.4 14.6 L13 20 L16 22 L16 23 L12 21.8 L8 23 L8 22 L11 20 L10.6 14.6 L3 17 L3 15 L10.6 11 Z'
+const LIGHT_PATH =
+  'M12 3 L12.8 10 L19 13 L19 14.5 L12.8 12.8 L12.5 18 L15 19.5 L15 20.5 L12 19.6 L9 20.5 L9 19.5 L11.5 18 L11.2 12.8 L5 14.5 L5 13 L11.2 10 Z'
+
+// Aircraft marker. Shape encodes kind (helicopter glyph vs plane, plane sized by
+// class); colour encodes status: selected (sky) > breach (rose) > military
+// (orange) > slate. Glyph points north and is rotated to the flight's track.
+function aircraftIcon(f: NormalizedFlight, selected: boolean, breach: boolean): L.DivIcon {
+  const kind = aircraftKind(f)
+  const fill = selected
+    ? '#38bdf8'
+    : breach
+      ? '#fb7185'
+      : kind === 'military'
+        ? '#fb923c'
+        : '#e2e8f0'
   const stroke = selected ? '#0c4a6e' : breach ? '#7f1d1d' : '#0f172a'
-  const html = `
-    <div style="transform: rotate(${rot}deg); width:28px; height:28px; display:flex; align-items:center; justify-content:center;">
-      <svg width="26" height="26" viewBox="0 0 24 24" fill="${fill}" stroke="${stroke}" stroke-width="1" stroke-linejoin="round">
-        <path d="M12 2 L13.4 11 L21 15 L21 17 L13.4 14.6 L13 20 L16 22 L16 23 L12 21.8 L8 23 L8 22 L11 20 L10.6 14.6 L3 17 L3 15 L10.6 11 Z"/>
-      </svg>
-    </div>`
+  const rot = f.track ?? 0
+  const size = kind === 'large-jet' ? 30 : kind === 'light' ? 22 : 26
+
+  let glyph: string
+  if (kind === 'helicopter') {
+    // Rotor disc + hub + tail boom (front = top), rotated to track.
+    glyph = `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${fill}" stroke-width="1.6" stroke-linecap="round">
+        <circle cx="12" cy="10" r="6.5" stroke-opacity="0.8"/>
+        <circle cx="12" cy="10" r="1.8" fill="${fill}" stroke="${stroke}" stroke-width="0.6"/>
+        <line x1="12" y1="11.5" x2="12" y2="21"/>
+        <line x1="9" y1="21" x2="15" y2="21"/>
+      </svg>`
+  } else {
+    const path = kind === 'light' ? LIGHT_PATH : PLANE_PATH
+    glyph = `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="${fill}" stroke="${stroke}" stroke-width="1" stroke-linejoin="round"><path d="${path}"/></svg>`
+  }
+
   return L.divIcon({
-    html,
+    html: `<div style="transform: rotate(${rot}deg); width:${size}px; height:${size}px; display:flex; align-items:center; justify-content:center;">${glyph}</div>`,
     className: 'plane-marker',
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
   })
 }
 
@@ -162,7 +187,7 @@ export default function MapView({
               )}
               <Marker
                 position={[f.lat, f.lon]}
-                icon={planeIcon(f.track, f.hex === selectedHex, breach)}
+                icon={aircraftIcon(f, f.hex === selectedHex, breach)}
                 zIndexOffset={f.hex === selectedHex ? 1000 : 0}
                 eventHandlers={{ click: () => onSelect(f) }}
               />
