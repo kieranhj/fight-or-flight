@@ -6,10 +6,12 @@ import FlightCard from './FlightCard'
 export default function FlightList({
   result,
   accuracyM,
+  hiddenCount = 0,
   onSelect,
 }: {
   result: NearbyResponse
   accuracyM?: number
+  hiddenCount?: number
   onSelect?: (f: NormalizedFlight) => void
 }) {
   const { flights, query, source, generatedAt } = result
@@ -19,11 +21,23 @@ export default function FlightList({
   if (flights.length === 0) {
     return (
       <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-4 text-center">
-        <p className="text-sm font-medium text-slate-200">No qualifying aircraft nearby.</p>
-        <p className="mt-1 text-xs text-slate-400">
-          Nothing within {radius} after filtering out military, rotorcraft and light GA. Free feeds
-          can also miss very low or masked aircraft.
-        </p>
+        {hiddenCount > 0 ? (
+          <>
+            <p className="text-sm font-medium text-slate-200">All nearby aircraft are hidden.</p>
+            <p className="mt-1 text-xs text-slate-400">
+              {hiddenCount} aircraft within {radius} are hidden by your “Show by type” filters
+              (Settings).
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="text-sm font-medium text-slate-200">No qualifying aircraft nearby.</p>
+            <p className="mt-1 text-xs text-slate-400">
+              Nothing within {radius} after filtering out military, rotorcraft and light GA. Free
+              feeds can also miss very low or masked aircraft.
+            </p>
+          </>
+        )}
       </div>
     )
   }
@@ -46,6 +60,7 @@ export default function FlightList({
       )}
       <p className="mt-1 text-center text-[11px] leading-relaxed text-slate-500">
         {flights.length} aircraft within {radius}
+        {hiddenCount > 0 && ` · ${hiddenCount} hidden`}
         {accuracyM != null && ` · location ±${Math.round(accuracyM)} m`} · via {source} · updated{' '}
         {formatClock(generatedAt)}
       </p>

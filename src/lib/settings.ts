@@ -14,6 +14,14 @@ export type LocationMode = 'gps' | 'home'
 /** Opt-ins to show normally-filtered traffic (all default off). */
 export type IncludeFilters = { military: boolean; rotorcraft: boolean; light: boolean }
 
+/** Which classification groups to show (all default on). */
+export type ShowGroups = {
+  ours: boolean
+  transit: boolean
+  overflight: boolean
+  unknown: boolean
+}
+
 export type Settings = {
   /** Number of aircraft to show. */
   n: number
@@ -28,6 +36,8 @@ export type Settings = {
   homeLon: number
   /** Include categories normally filtered out (military / helicopters / light GA). */
   include: IncludeFilters
+  /** Show/hide flights by classification group. */
+  showGroups: ShowGroups
   /** Draw the airport corridor overlay on the map. */
   showCorridors: boolean
   /** Re-fetch automatically while results are shown (paused when hidden/offline). */
@@ -45,6 +55,7 @@ export const DEFAULT_SETTINGS: Settings = {
   homeLat: HOME_LOCATION.lat,
   homeLon: HOME_LOCATION.lon,
   include: { military: false, rotorcraft: false, light: false },
+  showGroups: { ours: true, transit: true, overflight: true, unknown: true },
   showCorridors: true,
   autoRefresh: false,
   autoRefreshSec: 10,
@@ -66,6 +77,7 @@ export function loadSettings(): Settings {
       ...parsed,
       units: { ...DEFAULT_SETTINGS.units, ...parsed.units },
       include: { ...DEFAULT_SETTINGS.include, ...parsed.include },
+      showGroups: { ...DEFAULT_SETTINGS.showGroups, ...parsed.showGroups },
       n: clamp(parsed.n ?? DEFAULT_SETTINGS.n, 1, 20, DEFAULT_SETTINGS.n),
       radiusNm: clamp(parsed.radiusNm ?? DEFAULT_SETTINGS.radiusNm, 1, 50, DEFAULT_SETTINGS.radiusNm),
       autoRefreshSec: clamp(
