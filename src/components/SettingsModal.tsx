@@ -1,6 +1,15 @@
 import { useState } from 'react'
 import type { Settings } from '../lib/settings'
+import type { FlightGroup } from '../lib/classify'
+import { AIRPORT_LIST } from '../config/airports'
 import { loadUserDetails, saveUserDetails, type UserDetails } from '../lib/userDetails'
+
+const GROUP_OPTIONS: { key: FlightGroup; label: string }[] = [
+  ...AIRPORT_LIST.map((a) => ({ key: a.icao, label: a.name })),
+  { key: 'transit', label: 'Transit — bound for other airports' },
+  { key: 'overflight', label: 'Overflight — high, unknown' },
+  { key: 'unknown', label: 'Other / unclassified' },
+]
 
 function Segmented<T extends string>({
   value,
@@ -58,6 +67,8 @@ export default function SettingsModal({
     onChange({ ...settings, units: { ...settings.units, ...patch } })
   const setInclude = (patch: Partial<Settings['include']>) =>
     onChange({ ...settings, include: { ...settings.include, ...patch } })
+  const setShowGroup = (key: FlightGroup, value: boolean) =>
+    onChange({ ...settings, showGroups: { ...settings.showGroups, [key]: value } })
   const updateDetail = (key: keyof UserDetails, value: string) => {
     const next = { ...details, [key]: value }
     setDetails(next)
@@ -125,6 +136,26 @@ export default function SettingsModal({
                 onChange={(speed) => setUnit({ speed })}
               />
             </div>
+          </Field>
+
+          <Field label="Show by type">
+            <div className="space-y-1.5">
+              {GROUP_OPTIONS.map((opt) => (
+                <label key={opt.key} className="flex items-center gap-2 text-sm text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={settings.showGroups[opt.key]}
+                    onChange={(e) => setShowGroup(opt.key, e.target.checked)}
+                    className="accent-sky-500"
+                  />
+                  {opt.label}
+                </label>
+              ))}
+            </div>
+            <p className="mt-1.5 text-[11px] text-slate-500">
+              Hides flights by what they’re doing. Filtering happens after the nearest-N are
+              fetched, so increase “Aircraft to show” if you hide a lot and want more.
+            </p>
           </Field>
 
           <Field label="Show usually-filtered traffic">

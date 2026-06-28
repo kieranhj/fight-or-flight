@@ -102,6 +102,16 @@ Instructions:
 - Optional: a tiny throwaway Node script using `distanceToPolylineNm` to print the
   offset of a few sample points before/after, to confirm the new geometry behaves.
 
+## Downstream work this unblocks
+
+Once the corridors (SIDs **and** STARs) are accurate, the deferred
+**ascent/descent trajectory heuristic** can be built — it uses corridor alignment
+to identify Farnborough arrivals/departures (the biz-jet traffic FR24 gets from
+flight plans and we currently miss). See
+[`ASCENT-DESCENT-HEURISTIC.md`](./ASCENT-DESCENT-HEURISTIC.md). That plan needs
+`kind: 'arrival'` corridors too, so extract STARs from WebTrak, not just the Rwy 24
+departures.
+
 ## Step 4: tidy up
 
 - Update `docs/DATA-RESEARCH.md` (item 2) and `README.md` to mark the corridor

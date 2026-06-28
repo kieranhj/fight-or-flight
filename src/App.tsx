@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import NearbyButton, { type NearbyStatus } from './components/NearbyButton'
 import FlightList from './components/FlightList'
 import MapView from './components/MapView'
@@ -9,6 +9,7 @@ import SettingsModal from './components/SettingsModal'
 import { SettingsContext } from './components/SettingsContext'
 import { fetchNearby, type NearbyResponse, type NormalizedFlight } from './lib/adsb'
 import { getCurrentPosition, type GeoResult } from './lib/geolocation'
+import { classifyFlight } from './lib/classify'
 import { incidentCount } from './lib/log'
 import { loadSettings, saveSettings, type Settings } from './lib/settings'
 
@@ -159,6 +160,14 @@ export default function App() {
 
   const hasResults = result != null && status !== 'error'
 
+  // Client-side display filter by classification group (the nearest-N are fetched
+  // first, then filtered here).
+  const visibleFlights = useMemo(
+    () => (result ? result.flights.filter((f) => settings.showGroups[classifyFlight(f).group]) : []),
+    [result, settings.showGroups],
+  )
+  const hiddenCount = (result?.flights.length ?? 0) - visibleFlights.length
+
   return (
     <SettingsContext.Provider value={settings}>
       <div className="min-h-full bg-slate-900 text-slate-100">
@@ -239,7 +248,8 @@ export default function App() {
           <main className="mt-4 flex-1">
             {hasResults && view === 'list' && (
               <FlightList
-                result={result}
+                result={{ ...result, flights: visibleFlights }}
+                hiddenCount={hiddenCount}
                 accuracyM={homeUsed ? undefined : pos?.accuracyM}
                 onSelect={setSelected}
               />
@@ -247,7 +257,7 @@ export default function App() {
             {hasResults && view === 'map' && pos && (
               <MapView
                 pos={pos}
-                flights={result.flights}
+                flights={visibleFlights}
                 trails={trails}
                 selectedHex={selected?.hex ?? null}
                 onSelect={setSelected}

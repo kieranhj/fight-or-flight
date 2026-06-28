@@ -10,12 +10,23 @@ import { haversineNm, bearingDeg, angularDiff } from './geo'
 
 export type ClassifyBasis = 'route' | 'proximity' | 'callsign' | 'unknown'
 
+/**
+ * Coarse group for display filtering:
+ *  - an airport ICAO (EGLF/EGLL/EGKK) when it belongs to one of ours
+ *  - 'transit'    known route, but between other airports (passing over)
+ *  - 'overflight' unknown but high altitude (passing over)
+ *  - 'unknown'    unknown and not high / not in a terminal area
+ */
+export type FlightGroup = Airport['icao'] | 'transit' | 'overflight' | 'unknown'
+
 export type Classification = {
   /** Owning airport, or null for transit/unknown. */
   airport: Airport['icao'] | null
   /** Display label: airport name, or a transit/unknown label. */
   label: string
   basis: ClassifyBasis
+  /** Coarse group, for the classification display filters. */
+  group: FlightGroup
   /** True unless route-confirmed — geometric/callsign matches are best-effort. */
   indicative: boolean
   /** One-line explanation shown in the UI. */
@@ -48,6 +59,7 @@ export function classifyFlight(f: NormalizedFlight): Classification {
         airport: match,
         label: AIRPORTS[match].name,
         basis: 'route',
+        group: match,
         indicative: false,
         reason: arriving
           ? `Route ${route.originLabel ?? '?'} → ${AIRPORTS[match].name} — arriving.`
@@ -60,6 +72,7 @@ export function classifyFlight(f: NormalizedFlight): Classification {
         airport: null,
         label: 'Transit',
         basis: 'unknown',
+        group: 'transit',
         indicative: false,
         reason: `${route.originLabel ?? '?'} → ${route.destinationLabel ?? '?'} — not a Farnborough/Heathrow/Gatwick movement.`,
       }
@@ -94,6 +107,7 @@ export function classifyFlight(f: NormalizedFlight): Classification {
         airport: nearest.airport.icao,
         label: nearest.airport.name,
         basis: 'proximity',
+        group: nearest.airport.icao,
         indicative: true,
         reason: `${nearest.dNm.toFixed(1)} nm from ${nearest.airport.name}${altNote}${phase}. No route data — position-based guess.`,
       }
@@ -109,6 +123,7 @@ export function classifyFlight(f: NormalizedFlight): Classification {
         airport: hint.airport,
         label: AIRPORTS[hint.airport].name,
         basis: 'callsign',
+        group: hint.airport,
         indicative: true,
         reason: `Callsign prefix “${hint.prefix}” is associated with ${AIRPORTS[hint.airport].name}.`,
       }
@@ -121,6 +136,7 @@ export function classifyFlight(f: NormalizedFlight): Classification {
     airport: null,
     label: high ? 'Transit / overflight' : 'Transit / unknown',
     basis: 'unknown',
+    group: high ? 'overflight' : 'unknown',
     indicative: true,
     reason: high
       ? 'High-altitude overflight; no route match to our airports.'
