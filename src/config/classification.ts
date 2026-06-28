@@ -30,6 +30,35 @@ export const CLASSIFY_THRESHOLDS = {
 }
 
 /**
+ * Largest ADS-B size category each airport realistically handles in normal ops.
+ * Farnborough is business-aviation only: its biggest movements are large-cabin
+ * biz jets / corporate airliners (Gulfstream G650, Global 7500, BBJ ≈ A3). It does
+ * NOT take A4 (B757-class), A5 (heavies) or A6 (high-performance) — so such an
+ * aircraft near Farnborough with no route is a Heathrow/Gatwick movement passing
+ * overhead, not a Farnborough one. Heathrow/Gatwick take everything up to A5.
+ */
+export const AIRPORT_MAX_SIZE_CATEGORY: Record<Airport['icao'], 'A3' | 'A5'> = {
+  EGLF: 'A3',
+  EGLL: 'A5',
+  EGKK: 'A5',
+}
+
+// Fixed-wing size ordering. A6 (high-performance) ranks above A5 here so it's
+// excluded from Farnborough. A7 (rotorcraft) and unknown have no size rank and
+// are never excluded (helicopters do operate at Farnborough).
+const SIZE_RANK: Record<string, number> = { A1: 1, A2: 2, A3: 3, A4: 4, A5: 5, A6: 6 }
+
+/** Could an aircraft of this ADS-B category plausibly operate at this airport? */
+export function categoryFitsAirport(
+  category: string | null,
+  icao: Airport['icao'],
+): boolean {
+  const rank = category ? SIZE_RANK[category.toUpperCase()] : undefined
+  if (rank == null) return true // unknown category or rotorcraft — don't exclude
+  return rank <= SIZE_RANK[AIRPORT_MAX_SIZE_CATEGORY[icao]]
+}
+
+/**
  * Optional callsign-prefix → airport hints (weakest signal; indicative).
  * Left empty on purpose: callsign prefixes identify the *operator*, not the
  * airport, so we only add a mapping when we're confident a prefix is a reliable

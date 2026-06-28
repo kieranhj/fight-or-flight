@@ -1,7 +1,11 @@
 import type { NormalizedFlight } from './adsb'
 import type { Airport } from '../config/types'
 import { AIRPORTS, AIRPORT_LIST } from '../config/airports'
-import { CLASSIFY_THRESHOLDS, CALLSIGN_AIRPORT_HINTS } from '../config/classification'
+import {
+  CLASSIFY_THRESHOLDS,
+  CALLSIGN_AIRPORT_HINTS,
+  categoryFitsAirport,
+} from '../config/classification'
 import { haversineNm, bearingDeg, angularDiff } from './geo'
 
 export type ClassifyBasis = 'route' | 'proximity' | 'callsign' | 'unknown'
@@ -68,6 +72,9 @@ export function classifyFlight(f: NormalizedFlight): Classification {
     const alt = f.altBaroFt
     let nearest: { airport: Airport; dNm: number } | null = null
     for (const a of AIRPORT_LIST) {
+      // Skip airports too small for this aircraft (e.g. a heavy can't be a
+      // Farnborough movement) — avoids proximity false positives.
+      if (!categoryFitsAirport(f.category, a.icao)) continue
       const dNm = haversineNm(pos, a.position)
       if (!nearest || dNm < nearest.dNm) nearest = { airport: a, dNm }
     }
