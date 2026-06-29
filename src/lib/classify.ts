@@ -7,6 +7,7 @@ import {
   categoryFitsAirport,
 } from '../config/classification'
 import { haversineNm, bearingDeg, angularDiff } from './geo'
+import { farnboroughTrajectory } from './trajectory'
 
 export type ClassifyBasis = 'route' | 'proximity' | 'callsign' | 'unknown'
 
@@ -79,7 +80,23 @@ export function classifyFlight(f: NormalizedFlight): Classification {
     }
   }
 
-  // 3. No usable route → geometry: low and close to an airport ⇒ indicative match.
+  // 3. No usable route → trajectory heuristic: a route-less biz jet whose motion
+  // and corridor alignment mark it as arriving/departing Farnborough. Runs before
+  // the simpler proximity check so we catch inbound/outbound jets earlier (and
+  // further out) than the 15 nm terminal radius. Indicative.
+  const traj = farnboroughTrajectory(f)
+  if (traj.phase) {
+    return {
+      airport: 'EGLF',
+      label: AIRPORTS.EGLF.name,
+      basis: 'proximity',
+      group: 'EGLF',
+      indicative: true,
+      reason: traj.reason,
+    }
+  }
+
+  // 4. Still no match → geometry: low and close to an airport ⇒ indicative match.
   if (f.lat != null && f.lon != null) {
     const pos = { lat: f.lat, lon: f.lon }
     const alt = f.altBaroFt
@@ -114,7 +131,7 @@ export function classifyFlight(f: NormalizedFlight): Classification {
     }
   }
 
-  // 4. Callsign-prefix hint (weakest; empty config by default).
+  // 5. Callsign-prefix hint (weakest; empty config by default).
   if (f.callsign) {
     const cs = f.callsign.toUpperCase()
     const hint = CALLSIGN_AIRPORT_HINTS.find((h) => cs.startsWith(h.prefix.toUpperCase()))
@@ -130,7 +147,7 @@ export function classifyFlight(f: NormalizedFlight): Classification {
     }
   }
 
-  // 5. Unknown / transit — labelled, not guessed.
+  // 6. Unknown / transit — labelled, not guessed.
   const high = f.altBaroFt != null && f.altBaroFt >= CLASSIFY_THRESHOLDS.overflightAltFt
   return {
     airport: null,

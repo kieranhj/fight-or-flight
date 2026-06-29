@@ -1,9 +1,25 @@
-# Plan: ascent/descent trajectory heuristic for Farnborough
+# Ascent/descent trajectory heuristic for Farnborough
 
-**Status: deferred.** Do this *after* the corridor geometry is accurate
-(see [`CORRIDOR-DATA-EXTRACTION.md`](./CORRIDOR-DATA-EXTRACTION.md)) — the
-heuristic depends on real arrival (STAR) and departure (SID) tracks to avoid
-false positives.
+**Status: ✅ implemented (2026-06-29)** in `src/lib/trajectory.ts`, wired into
+`classify.ts`, thresholds in `config/classification.ts` (`TRAJECTORY_THRESHOLDS`).
+Built on the real WebTrak corridor swaths landed via
+[`CORRIDOR-DATA-EXTRACTION.md`](./CORRIDOR-DATA-EXTRACTION.md).
+
+## Deviation from the original plan (and why)
+
+The plan allowed firing on **descent + heading alone** (no corridor) for the wider
+funnel. Implementation made **corridor alignment mandatory** instead: Heathrow
+(EGLL) is only ~12 nm from Farnborough, so a Heathrow arrival descending and
+tracking roughly toward EGLF would false-fire on descent+heading. With the real
+polygon swaths now available, point-in-polygon membership is the genuine
+discriminator, and the WebTrak envelopes are generous ("most likely here"), so a
+real Farnborough movement within the funnel is inside one. Net rule: **corridor +
+one confirming signal** (descent/climb or heading) meets the threshold; corridor
+alone (score 3) or motion-without-corridor (score 0) does not fire.
+
+The rest of this document is the original plan, kept for context.
+
+---
 
 ## Why
 
@@ -104,6 +120,15 @@ Farnborough arrival (indicative)."*
 
 ## Prerequisites checklist
 
-- [ ] Accurate EGLF **departure (SID)** centreline(s) in `config/corridors.ts`.
-- [ ] EGLF **arrival (STAR)** corridor(s) added (`kind: 'arrival'`).
-- [ ] Then implement `trajectory.ts`, wire into `classify.ts`, add thresholds, test.
+- [x] Accurate EGLF **departure (SID)** geometry in `config/corridors.ts` (WebTrak swaths).
+- [x] EGLF **arrival (STAR)** corridors added (`kind: 'arrival'`).
+- [x] `trajectory.ts` implemented, wired into `classify.ts`, thresholds added, verified
+      with synthetic cases (aligned descent → arrival; aligned climb → departure;
+      off-corridor descent near field → not Farnborough; heavy → not Farnborough;
+      level-in-swath → not Farnborough).
+
+## Possible follow-ups
+
+- Spot-check live against FR24 for a session of real biz-jet arrivals.
+- Generalise to EGLL/EGKK once their corridor swaths are added (the same
+  `kind`-filtered point-in-polygon approach applies).
