@@ -8,8 +8,11 @@ import { haversineNm, bearingDeg, angularDiff, pointInPolygon } from './geo'
 // Route-less biz jets are inferred as arriving/departing Farnborough from their
 // motion plus point-in-polygon membership of the real WebTrak corridor swaths.
 // Corridor alignment is REQUIRED (the discriminator vs nearby Heathrow/Gatwick
-// traffic); a confirming motion/heading signal then meets the score threshold.
-// Always indicative — classify.ts only calls this when no route confirms an airport.
+// traffic) AND vertical motion is REQUIRED (descent/vectored-low for an arrival,
+// a climb for a departure) — heading only corroborates. Without the vertical
+// requirement a level GA aircraft transiting a broad swath toward the field would
+// be mislabelled. Always indicative — classify.ts calls this only when no route
+// confirms an airport.
 
 export type TrajectoryPhase = 'arrival' | 'departure'
 export type TrajectoryResult = { phase: TrajectoryPhase | null; score: number; reason: string }
@@ -70,6 +73,12 @@ function scoreArrival(
   const headingToward = track != null && angularDiff(track, toField) <= T.headingToleranceDeg
   const selectedAltLow = navAlt != null && navAlt <= T.selectedAltLowFt
 
+  // An arrival is "descending in": require vertical evidence (descending, or a low
+  // selected altitude = being vectored down). Heading + corridor alone must NOT
+  // qualify, else a level GA aircraft transiting the (broad) arrival swath toward
+  // the field is mislabelled an arrival.
+  if (!descending && !selectedAltLow) return NONE
+
   let score = T.score.corridor
   if (descending) score += T.score.descent
   if (headingToward) score += T.score.heading
@@ -102,6 +111,10 @@ function scoreDeparture(
   const fromField = bearingDeg(EGLF.position, pos)
   const climbing = vr != null && vr > T.climbRateFpm
   const headingAway = track != null && angularDiff(track, fromField) <= T.headingToleranceDeg
+
+  // A departure is "climbing out": require an actual climb. Heading + corridor alone
+  // must NOT qualify, else a level GA aircraft transiting outbound is mislabelled.
+  if (!climbing) return NONE
 
   let score = T.score.corridor
   if (climbing) score += T.score.climb

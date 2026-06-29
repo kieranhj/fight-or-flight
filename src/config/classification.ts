@@ -27,6 +27,18 @@ export const CLASSIFY_THRESHOLDS = {
    * departure. Used only to enrich the reason text, not to decide the airport.
    */
   headingToleranceDeg: 50,
+  /**
+   * Proximity attribution also requires the altitude to be consistent with a
+   * terminal profile, so low-and-far traffic (hobbyist GA transiting well below any
+   * approach/departure profile) isn't mislabelled as an airport movement. Within
+   * `terminalNearFieldNm` any altitude is allowed (circuit / final / initial climb);
+   * beyond it, the flight must be at least
+   * (dNm − terminalNearFieldNm) × terminalProfileFtPerNm above the airport elevation.
+   * ~300 ft/nm sits just under a 3° glideslope (≈318 ft/nm), so genuine arrivals and
+   * departures pass while a light aircraft at ~1,500 ft 9 nm out is rejected.
+   */
+  terminalNearFieldNm: 2,
+  terminalProfileFtPerNm: 300,
 }
 
 type SizeCat = 'A1' | 'A2' | 'A3' | 'A4' | 'A5' | 'A6'
