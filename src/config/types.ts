@@ -45,7 +45,7 @@ export type AirportHours = {
 }
 
 export type Airport = {
-  icao: 'EGLF' | 'EGLL' | 'EGKK'
+  icao: 'EGLF' | 'EGLL' | 'EGKK' | 'EGLK'
   name: string
   position: LatLon
   /** Ground elevation AMSL in feet, where known (context for altitude rules). */
