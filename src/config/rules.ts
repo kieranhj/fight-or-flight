@@ -32,14 +32,14 @@ export const RULES: RuleDescriptor[] = [
     label: 'Altitude floor',
     severity: 'indicative',
     summary:
-      'Below the design altitude profile for its distance band. Indicative — approach traffic is legitimately low.',
+      'Below the published expected altitude band for where it is. Indicative — approach traffic is legitimately low.',
   },
   {
     id: 'R3-corridor',
     label: 'Corridor proximity',
     severity: 'indicative',
     summary:
-      'Lateral offset beyond tolerance from the nearest configured RNAV centreline. Indicative — seed geometry only.',
+      'Outside every published Farnborough departure/arrival corridor swath. Indicative — review before acting.',
   },
 ]
 
@@ -48,20 +48,17 @@ export const RULE_THRESHOLDS = {
   /** R1: minutes of grace either side of a window edge before flagging out-of-hours. */
   hoursGraceMinutes: 5,
   /**
-   * R2: only apply the indicative altitude-floor check to flights within this
-   * distance (nm) of the owning airport, to avoid flagging legitimate approaches.
+   * R2: feet below a zone's expected altitude band (minAltFt) before flagging.
+   * The location now comes from point-in-polygon, so no distance gate is needed —
+   * the WebTrak altitude zones are themselves bounded to the terminal area.
    */
-  altitudeCheckMaxDistanceNm: 8,
-  /** R2: feet below the corridor's designAltitudeFt before flagging. */
   altitudeFloorMarginFt: 500,
-  /** R3: handled per-corridor via Corridor.toleranceNm; this is the default fallback. */
-  corridorDefaultToleranceNm: 1.5,
   /**
-   * R3: upper bound (nm) on lateral offset before we STOP flagging. Beyond this a
-   * flight is clearly not on the (single, seed) encoded SID at all, so flagging it
-   * "off track" would be noise rather than signal.
+   * R3: only test "off corridor" within this distance (nm) of Farnborough. The
+   * published swaths extend ~15 nm out; beyond this gate a flight is legitimately
+   * not yet on / already clear of a SID/STAR and flagging it would be noise.
    */
-  corridorMaxOffsetNm: 5,
+  corridorCheckMaxDistanceNm: 12,
 }
 
 /** Global UI disclaimer — flags are indicative, not proof (Build Plan §9). */

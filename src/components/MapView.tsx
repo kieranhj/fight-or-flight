@@ -8,7 +8,6 @@ import { assessFlight, topSeverity } from '../lib/assess'
 import { aircraftKind } from '../lib/aircraft'
 import { useSettings } from './SettingsContext'
 import { CORRIDORS, type CorridorKind } from '../config/corridors'
-import { corridorSwath } from '../lib/geo'
 
 // Corridor overlay colours, keyed by type.
 const CORRIDOR_COLOUR: Record<CorridorKind, string> = {
@@ -16,41 +15,29 @@ const CORRIDOR_COLOUR: Record<CorridorKind, string> = {
   arrival: '#2dd4bf', // teal
 }
 
-function CorridorOverlay() {
+// Draw the real WebTrak swath polygons for the enabled kinds. The lateral
+// "Corridors" SID/STAR envelopes get a firmer outline; the broader altitude-band
+// zones a fainter wash.
+function CorridorOverlay({ show }: { show: Record<CorridorKind, boolean> }) {
   return (
     <>
-      {CORRIDORS.map((c) => {
+      {CORRIDORS.filter((c) => show[c.kind]).map((c) => {
         const colour = CORRIDOR_COLOUR[c.kind]
-        const swath = corridorSwath(c.centreline, c.toleranceNm).map(
-          (p) => [p.lat, p.lon] as L.LatLngExpression,
-        )
-        const line = c.centreline.map((p) => [p.lat, p.lon] as L.LatLngExpression)
+        const lateral = c.group === 'Corridors'
+        const positions = c.polygon.map((p) => [p.lat, p.lon] as L.LatLngExpression)
         return (
-          <Fragment key={c.id}>
-            {swath.length > 0 && (
-              <Polygon
-                positions={swath}
-                pathOptions={{
-                  color: colour,
-                  weight: 1,
-                  opacity: 0.5,
-                  fillColor: colour,
-                  fillOpacity: 0.12,
-                  interactive: false,
-                }}
-              />
-            )}
-            <Polyline
-              positions={line}
-              pathOptions={{
-                color: colour,
-                weight: 2,
-                opacity: 0.7,
-                dashArray: '5 5',
-                interactive: false,
-              }}
-            />
-          </Fragment>
+          <Polygon
+            key={c.id}
+            positions={positions}
+            pathOptions={{
+              color: colour,
+              weight: lateral ? 1.5 : 1,
+              opacity: lateral ? 0.7 : 0.35,
+              fillColor: colour,
+              fillOpacity: lateral ? 0.12 : 0.06,
+              interactive: false,
+            }}
+          />
         )
       })}
     </>
@@ -153,9 +140,10 @@ export default function MapView({
     ...plotted.map((f) => [f.lat, f.lon] as L.LatLngExpression),
   ]
 
-  const corridorKinds = showCorridors
-    ? (Array.from(new Set(CORRIDORS.map((c) => c.kind))) as CorridorKind[])
-    : []
+  const anyCorridor = showCorridors.departure || showCorridors.arrival
+  const corridorKinds = (
+    Array.from(new Set(CORRIDORS.map((c) => c.kind))) as CorridorKind[]
+  ).filter((k) => showCorridors[k])
 
   return (
     <div className="relative h-[55vh] overflow-hidden rounded-xl border border-slate-700">
@@ -170,7 +158,7 @@ export default function MapView({
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           maxZoom={19}
         />
-        {showCorridors && <CorridorOverlay />}
+        {anyCorridor && <CorridorOverlay show={showCorridors} />}
         <Circle
           center={[pos.lat, pos.lon]}
           radius={pos.accuracyM}

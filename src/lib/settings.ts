@@ -1,6 +1,7 @@
 import { NEARBY_DEFAULTS } from '../config/api'
 import { HOME_LOCATION } from '../config/airports'
 import type { FlightGroup } from './classify'
+import type { CorridorKind } from '../config/corridors'
 
 // User-configurable settings (Phase 6), persisted to localStorage. Defaults come
 // from config so the seed values stay in one place.
@@ -19,6 +20,9 @@ export type IncludeFilters = { military: boolean; rotorcraft: boolean; light: bo
  * (the three airport ICAOs plus transit / overflight / unknown). */
 export type ShowGroups = Record<FlightGroup, boolean>
 
+/** Which corridor overlays to draw, by kind (both default on). */
+export type ShowCorridors = Record<CorridorKind, boolean>
+
 export type Settings = {
   /** Number of aircraft to show. */
   n: number
@@ -35,8 +39,8 @@ export type Settings = {
   include: IncludeFilters
   /** Show/hide flights by classification group. */
   showGroups: ShowGroups
-  /** Draw the airport corridor overlay on the map. */
-  showCorridors: boolean
+  /** Draw the airport corridor overlays on the map, by kind. */
+  showCorridors: ShowCorridors
   /** Re-fetch automatically while results are shown (paused when hidden/offline). */
   autoRefresh: boolean
   /** Auto-refresh interval in seconds. */
@@ -53,7 +57,7 @@ export const DEFAULT_SETTINGS: Settings = {
   homeLon: HOME_LOCATION.lon,
   include: { military: false, rotorcraft: false, light: false },
   showGroups: { EGLF: true, EGLL: true, EGKK: true, transit: true, overflight: true, unknown: true },
-  showCorridors: true,
+  showCorridors: { departure: true, arrival: true },
   autoRefresh: false,
   autoRefreshSec: 10,
 }
@@ -69,12 +73,19 @@ export function loadSettings(): Settings {
     const raw = localStorage.getItem(KEY)
     if (!raw) return DEFAULT_SETTINGS
     const parsed = JSON.parse(raw) as Partial<Settings>
+    // Migration: showCorridors was once a single boolean (one overlay toggle).
+    const rawCorridors = parsed.showCorridors as unknown
+    const legacyCorridors =
+      typeof rawCorridors === 'boolean'
+        ? { departure: rawCorridors, arrival: rawCorridors }
+        : parsed.showCorridors
     return {
       ...DEFAULT_SETTINGS,
       ...parsed,
       units: { ...DEFAULT_SETTINGS.units, ...parsed.units },
       include: { ...DEFAULT_SETTINGS.include, ...parsed.include },
       showGroups: { ...DEFAULT_SETTINGS.showGroups, ...parsed.showGroups },
+      showCorridors: { ...DEFAULT_SETTINGS.showCorridors, ...legacyCorridors },
       n: clamp(parsed.n ?? DEFAULT_SETTINGS.n, 1, 20, DEFAULT_SETTINGS.n),
       radiusNm: clamp(parsed.radiusNm ?? DEFAULT_SETTINGS.radiusNm, 1, 50, DEFAULT_SETTINGS.radiusNm),
       autoRefreshSec: clamp(
