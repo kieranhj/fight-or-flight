@@ -29,6 +29,8 @@ export const CLASSIFY_THRESHOLDS = {
   headingToleranceDeg: 50,
 }
 
+type SizeCat = 'A1' | 'A2' | 'A3' | 'A4' | 'A5' | 'A6'
+
 /**
  * Trajectory heuristic for Farnborough (src/lib/trajectory.ts). Business jets come
  * back route-less from the crowd-sourced route DB, so we infer arriving/departing
@@ -63,22 +65,27 @@ export const TRAJECTORY_THRESHOLDS = {
 }
 
 /**
- * Largest ADS-B size category each airport realistically handles in normal ops.
- * Farnborough is business-aviation only: its biggest movements are large-cabin
- * biz jets / corporate airliners (Gulfstream G650, Global 7500, BBJ ≈ A3). It does
- * NOT take A4 (B757-class), A5 (heavies) or A6 (high-performance) — so such an
- * aircraft near Farnborough with no route is a Heathrow/Gatwick movement passing
- * overhead, not a Farnborough one. Heathrow/Gatwick take everything up to A5.
+ * The ADS-B size-category BAND each airport realistically handles in normal ops,
+ * used to keep proximity matches off the wrong airport. Two adjacent fields drive
+ * the bands here: Farnborough (biz aviation) and Blackbushe (light GA), ~2.5 nm
+ * apart — so size is what separates their traffic when position alone is ambiguous.
+ *  - EGLF Farnborough: A2–A3. Business jets; NOT light GA (A1 → Blackbushe) and NOT
+ *    A4/A5/A6 heavies/high-performance (→ Heathrow/Gatwick passing overhead).
+ *  - EGLK Blackbushe: up to A2. Light aircraft, flying schools, gliders and light
+ *    business jets; the only nearby field that accepts A1, so light traffic near
+ *    Farnborough is attributed here rather than false-positiving Farnborough.
+ *  - EGLL/EGKK: up to A5 (everything heavy).
  */
-export const AIRPORT_MAX_SIZE_CATEGORY: Record<Airport['icao'], 'A3' | 'A5'> = {
-  EGLF: 'A3',
-  EGLL: 'A5',
-  EGKK: 'A5',
+export const AIRPORT_SIZE_RANGE: Record<Airport['icao'], { min?: SizeCat; max: SizeCat }> = {
+  EGLF: { min: 'A2', max: 'A3' },
+  EGLK: { max: 'A2' },
+  EGLL: { max: 'A5' },
+  EGKK: { max: 'A5' },
 }
 
 // Fixed-wing size ordering. A6 (high-performance) ranks above A5 here so it's
 // excluded from Farnborough. A7 (rotorcraft) and unknown have no size rank and
-// are never excluded (helicopters do operate at Farnborough).
+// are never excluded (helicopters operate at both Farnborough and Blackbushe).
 const SIZE_RANK: Record<string, number> = { A1: 1, A2: 2, A3: 3, A4: 4, A5: 5, A6: 6 }
 
 /** Could an aircraft of this ADS-B category plausibly operate at this airport? */
@@ -88,7 +95,9 @@ export function categoryFitsAirport(
 ): boolean {
   const rank = category ? SIZE_RANK[category.toUpperCase()] : undefined
   if (rank == null) return true // unknown category or rotorcraft — don't exclude
-  return rank <= SIZE_RANK[AIRPORT_MAX_SIZE_CATEGORY[icao]]
+  const band = AIRPORT_SIZE_RANGE[icao]
+  const min = band.min ? SIZE_RANK[band.min] : 1
+  return rank >= min && rank <= SIZE_RANK[band.max]
 }
 
 /**

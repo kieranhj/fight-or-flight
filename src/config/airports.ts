@@ -67,6 +67,32 @@ export const AIRPORTS: Record<Airport['icao'], Airport> = {
       },
     ],
   },
+  EGLK: {
+    icao: 'EGLK',
+    name: 'Blackbushe',
+    // 51°19′26″N 000°50′51″W, elevation 325 ft (Wikipedia / metar-taf).
+    position: { lat: 51.32389, lon: -0.8475 },
+    elevationFt: 325,
+    hours: {
+      // Standard hours are 07:00–18:00 every day (airport + ATSU; source:
+      // blackbushe.com/hours, June 2026). The field can extend on request "up to
+      // 22:00 local", and is closed 22:00–07:00. We use the OUTER envelope
+      // 07:00–22:00 as the R1 permitted window so an approved evening extension is
+      // not flagged as a definite breach; only movements outside 07:00–22:00 are.
+      weekday: { open: '07:00', close: '22:00' },
+      weekend: { open: '07:00', close: '22:00' },
+      bankHoliday: { open: '07:00', close: '22:00' },
+      note: 'Standard hours 07:00–18:00 daily; extensions on request up to 22:00 (closed 22:00–07:00). No flying Christmas Day. Source: blackbushe.com/hours. Indicative — light-GA airfield ~2.5 nm west of Farnborough.',
+    },
+    channels: [
+      {
+        kind: 'web-form',
+        label: 'Noise complaint / contact form',
+        url: 'https://blackbushe.com/contact-us',
+        notes: 'Blackbushe is a small general-aviation airfield (light aircraft, flying schools, gliders, some light business jets). See blackbushe.com/noise for noise-abatement info.',
+      },
+    ],
+  },
   EGKK: {
     icao: 'EGKK',
     name: 'Gatwick',

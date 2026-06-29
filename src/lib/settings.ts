@@ -59,7 +59,7 @@ export const DEFAULT_SETTINGS: Settings = {
   homeLat: HOME_LOCATION.lat,
   homeLon: HOME_LOCATION.lon,
   include: { military: false, rotorcraft: false, light: false },
-  showGroups: { EGLF: true, EGLL: true, EGKK: true, transit: true, overflight: true, unknown: true },
+  showGroups: { EGLF: true, EGLK: true, EGLL: true, EGKK: true, transit: true, overflight: true, unknown: true },
   showCorridors: { departure: true, arrival: true },
   recenterOnRefresh: true,
   autoRefresh: false,

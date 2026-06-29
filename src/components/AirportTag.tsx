@@ -14,6 +14,10 @@ const STYLES: Record<string, { solid: string; outline: string }> = {
     solid: 'bg-violet-500/20 text-violet-300 border-violet-500/40',
     outline: 'text-violet-300/90 border-violet-500/50 border-dashed',
   },
+  EGLK: {
+    solid: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+    outline: 'text-emerald-300/90 border-emerald-500/50 border-dashed',
+  },
 }
 const TRANSIT = 'bg-slate-700/40 text-slate-300 border-slate-600'
 
