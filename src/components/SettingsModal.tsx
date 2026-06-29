@@ -213,6 +213,19 @@ export default function SettingsModal({
               Transparent swathes for the Farnborough corridors, coloured by type (departure /
               arrival). Both on by default.
             </p>
+            <label className="mt-2.5 flex items-center gap-2 text-sm text-slate-300">
+              <input
+                type="checkbox"
+                checked={settings.recenterOnRefresh}
+                onChange={(e) => set({ recenterOnRefresh: e.target.checked })}
+                className="accent-sky-500"
+              />
+              Re-centre map on refresh
+            </label>
+            <p className="mt-1.5 text-[11px] text-slate-500">
+              On by default — the map re-frames to fit all aircraft each refresh. Turn off to keep
+              your pan and zoom fixed.
+            </p>
           </Field>
 
           <Field label="Auto-refresh">
