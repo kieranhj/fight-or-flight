@@ -30,6 +30,39 @@ export const CLASSIFY_THRESHOLDS = {
 }
 
 /**
+ * Trajectory heuristic for Farnborough (src/lib/trajectory.ts). Business jets come
+ * back route-less from the crowd-sourced route DB, so we infer arriving/departing
+ * Farnborough from the aircraft's motion plus alignment with the real published
+ * WebTrak corridor swaths. All INDICATIVE — route-confirmed always wins.
+ *
+ * Corridor alignment (point-in-polygon against the EGLF arrival/departure swaths)
+ * is REQUIRED to fire: it is the only signal that distinguishes a Farnborough
+ * movement from a Heathrow/Gatwick one passing nearby (EGLL is ~12 nm away). A
+ * confirming motion/heading signal on top of that meets the score threshold.
+ */
+export const TRAJECTORY_THRESHOLDS = {
+  /** Descending faster than this (fpm, negative) counts as "descending". */
+  descentRateFpm: -300,
+  /** Climbing faster than this (fpm) counts as "climbing". */
+  climbRateFpm: 500,
+  /** Arrival funnel: only consider flights within this range / below this alt. */
+  arrivalMaxDistanceNm: 30,
+  arrivalMaxAltFt: 12_000,
+  /** Departure funnel: tighter — climb-outs are near and low. */
+  departureMaxDistanceNm: 12,
+  departureMaxAltFt: 8_000,
+  /** Track within this many degrees of (toward/away from) the field counts. */
+  headingToleranceDeg: 40,
+  /** Selected altitude (navAltitudeFt) at/below this suggests being vectored down. */
+  selectedAltLowFt: 5_000,
+  /** Evidence weights; corridor alignment is highest as the key discriminator. */
+  score: { corridor: 3, descent: 2, climb: 2, heading: 2, selectedAltLow: 1 },
+  /** Minimum score to tag (corridor=3 plus one confirming signal). */
+  arrivalScoreThreshold: 5,
+  departureScoreThreshold: 5,
+}
+
+/**
  * Largest ADS-B size category each airport realistically handles in normal ops.
  * Farnborough is business-aviation only: its biggest movements are large-cabin
  * biz jets / corporate airliners (Gulfstream G650, Global 7500, BBJ ≈ A3). It does
