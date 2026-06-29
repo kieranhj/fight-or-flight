@@ -1,15 +1,18 @@
 import type { NormalizedFlight } from './adsb'
 import { AIRPORTS } from '../config/airports'
 import { CORRIDORS } from '../config/corridors'
-import { TRAJECTORY_THRESHOLDS as T, categoryFitsAirport } from '../config/classification'
+import { TRAJECTORY_THRESHOLDS as T, categoryNotTooLargeForAirport } from '../config/classification'
 import { haversineNm, bearingDeg, angularDiff, pointInPolygon } from './geo'
 
 // Farnborough arrival/descent trajectory heuristic (docs/ASCENT-DESCENT-HEURISTIC.md).
 // Route-less biz jets are inferred as arriving/departing Farnborough from their
 // motion plus point-in-polygon membership of the real WebTrak corridor swaths.
 // Corridor alignment is REQUIRED (the discriminator vs nearby Heathrow/Gatwick
-// traffic); a confirming motion/heading signal then meets the score threshold.
-// Always indicative — classify.ts only calls this when no route confirms an airport.
+// traffic) AND vertical motion is REQUIRED (descent/vectored-low for an arrival,
+// a climb for a departure) — heading only corroborates. Without the vertical
+// requirement a level GA aircraft transiting a broad swath toward the field would
+// be mislabelled. Always indicative — classify.ts calls this only when no route
+// confirms an airport.
 
 export type TrajectoryPhase = 'arrival' | 'departure'
 export type TrajectoryResult = { phase: TrajectoryPhase | null; score: number; reason: string }
@@ -30,8 +33,12 @@ const insideAny = (pos: { lat: number; lon: number }, swaths: typeof CORRIDORS) 
  */
 export function farnboroughTrajectory(f: NormalizedFlight): TrajectoryResult {
   if (f.lat == null || f.lon == null) return NONE
-  // Size ceiling: a heavy near Farnborough is an overflight, not a movement.
-  if (!categoryFitsAirport(f.category, 'EGLF')) return NONE
+  // Exclude only aircraft too LARGE for Farnborough (a heavy near the field is an
+  // overflight). We do NOT apply the lower size bound here: a light aircraft flying
+  // a Farnborough corridor is a Farnborough movement, and corridor alignment (below)
+  // is stronger evidence than the often-wrong/missing ADS-B size category. This is
+  // what keeps an A1 in the Farnborough corridor from being mislabelled Blackbushe.
+  if (!categoryNotTooLargeForAirport(f.category, 'EGLF')) return NONE
 
   const pos = { lat: f.lat, lon: f.lon }
   const dNm = haversineNm(pos, EGLF.position)
@@ -66,6 +73,12 @@ function scoreArrival(
   const headingToward = track != null && angularDiff(track, toField) <= T.headingToleranceDeg
   const selectedAltLow = navAlt != null && navAlt <= T.selectedAltLowFt
 
+  // An arrival is "descending in": require vertical evidence (descending, or a low
+  // selected altitude = being vectored down). Heading + corridor alone must NOT
+  // qualify, else a level GA aircraft transiting the (broad) arrival swath toward
+  // the field is mislabelled an arrival.
+  if (!descending && !selectedAltLow) return NONE
+
   let score = T.score.corridor
   if (descending) score += T.score.descent
   if (headingToward) score += T.score.heading
@@ -98,6 +111,10 @@ function scoreDeparture(
   const fromField = bearingDeg(EGLF.position, pos)
   const climbing = vr != null && vr > T.climbRateFpm
   const headingAway = track != null && angularDiff(track, fromField) <= T.headingToleranceDeg
+
+  // A departure is "climbing out": require an actual climb. Heading + corridor alone
+  // must NOT qualify, else a level GA aircraft transiting outbound is mislabelled.
+  if (!climbing) return NONE
 
   let score = T.score.corridor
   if (climbing) score += T.score.climb
