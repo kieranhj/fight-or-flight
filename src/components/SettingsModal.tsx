@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Settings } from '../lib/settings'
 import type { FlightGroup } from '../lib/classify'
+import type { CorridorKind } from '../config/corridors'
 import { AIRPORT_LIST } from '../config/airports'
 import { loadUserDetails, saveUserDetails, type UserDetails } from '../lib/userDetails'
 
@@ -9,6 +10,11 @@ const GROUP_OPTIONS: { key: FlightGroup; label: string }[] = [
   { key: 'transit', label: 'Transit — bound for other airports' },
   { key: 'overflight', label: 'Overflight — high, unknown' },
   { key: 'unknown', label: 'Other / unclassified' },
+]
+
+const CORRIDOR_OPTIONS: { key: CorridorKind; label: string }[] = [
+  { key: 'departure', label: 'Departure corridors' },
+  { key: 'arrival', label: 'Arrival corridors' },
 ]
 
 function Segmented<T extends string>({
@@ -69,6 +75,8 @@ export default function SettingsModal({
     onChange({ ...settings, include: { ...settings.include, ...patch } })
   const setShowGroup = (key: FlightGroup, value: boolean) =>
     onChange({ ...settings, showGroups: { ...settings.showGroups, [key]: value } })
+  const setShowCorridor = (key: CorridorKind, value: boolean) =>
+    onChange({ ...settings, showCorridors: { ...settings.showCorridors, [key]: value } })
   const updateDetail = (key: keyof UserDetails, value: string) => {
     const next = { ...details, [key]: value }
     setDetails(next)
@@ -188,17 +196,22 @@ export default function SettingsModal({
           </Field>
 
           <Field label="Map">
-            <label className="flex items-center gap-2 text-sm text-slate-300">
-              <input
-                type="checkbox"
-                checked={settings.showCorridors}
-                onChange={(e) => set({ showCorridors: e.target.checked })}
-                className="accent-sky-500"
-              />
-              Show corridor overlay
-            </label>
+            <div className="flex flex-col gap-1.5">
+              {CORRIDOR_OPTIONS.map((opt) => (
+                <label key={opt.key} className="flex items-center gap-2 text-sm text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={settings.showCorridors[opt.key]}
+                    onChange={(e) => setShowCorridor(opt.key, e.target.checked)}
+                    className="accent-sky-500"
+                  />
+                  {opt.label}
+                </label>
+              ))}
+            </div>
             <p className="mt-1.5 text-[11px] text-slate-500">
-              Transparent swathes for the airport corridors, coloured by type (departure / arrival).
+              Transparent swathes for the Farnborough corridors, coloured by type (departure /
+              arrival). Both on by default.
             </p>
           </Field>
 

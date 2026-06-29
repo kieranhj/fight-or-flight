@@ -1,13 +1,46 @@
-# TODO: Replace seed corridor geometry with real Farnborough Rwy 24 SID tracks
+# DONE: Real Farnborough corridor geometry sourced from WebTrak
 
-**Status:** open. The one remaining data-accuracy item from Phase 6. Everything
-else (incl. the Farnborough operating hours) is confirmed — see
-[`DATA-RESEARCH.md`](./DATA-RESEARCH.md).
+**Status:** ✅ closed (2026-06-29). The seed centrelines have been replaced with the
+**real published swaths** from Farnborough WebTrak. The rest of this document is
+kept for provenance — it records how the data was found and wired in.
 
-This document is a self-contained handoff for **a human (extract the data) and a
-future agent (wire it in)**.
+## Resolution
+
+The corridor geometry was tracked down directly from the WebTrak app (no DevTools
+capture needed — toggling the layer triggers no fetch because WebTrak loads all
+overlays once at startup). The trail:
+
+- `eu.webtrak.aero/fab` → `GET /api/sites` (resolves site `fab`) → RequireJS module
+  `configs/appConfig.js` defines `STRING_DATA_URL` → `providers/DataSource.js`
+  `getPolyLayers()` POSTs to the Focus API.
+- **Endpoint (public, no auth):**
+  `POST https://focus-apis.emsbk.com/productinfo`
+  with form body `app=focus&product=WebTrak&sitename=fab&action=get_layers&send_all=false`.
+- Returns 17 GeoJSON polygons in EPSG:4326 across groups **Corridors** (6 lateral
+  SID/STAR swaths), **Departures** (4 altitude-banded zones), **Arrivals** (6
+  altitude-banded zones) and **Runway Layers** (1).
+
+Captured into the repo:
+- `docs/data/webtrak-fab-layers.raw.json` — verbatim API response.
+- `docs/data/webtrak-fab-layers.geojson` — cleaned 2D FeatureCollection + metadata.
+
+Wired in (point-in-polygon, not centreline-offset):
+- `src/config/corridors.ts` — generated from the capture; each `Corridor` is now a
+  `polygon` swath with `group` and a `minAltFt`/`maxAltFt` band parsed from the
+  WebTrak layer name (per-vertex z is bogus field-elevation extrusion, so altitude
+  comes from the names).
+- `src/lib/geo.ts` — added `pointInPolygon`; removed the old polyline/swath helpers.
+- `src/lib/rulesEngine.ts` — **R2** flags a flight below the expected altitude band
+  of the zone it is inside; **R3** flags a flight inside none of the published EGLF
+  swaths (union of all groups) within `corridorCheckMaxDistanceNm`.
+- `src/components/MapView.tsx` — draws the real polygons directly.
+
+Still **indicative**: the swaths are "most likely here" envelopes and approach
+traffic is legitimately low. Used under WebTrak's terms (attribution, non-commercial).
 
 ---
+
+## Original handoff (historical)
 
 ## What's needed and why
 

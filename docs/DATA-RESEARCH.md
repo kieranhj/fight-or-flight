@@ -26,33 +26,29 @@ verify" caveat and cited the source.
   hours & complaints page.
 - Farnborough Airport FAQ (farnboroughairport2040.com).
 
-## 2. Rwy 24 SID corridor — PARTIALLY confirmed ⚠️
+## 2. Farnborough corridor geometry — SOURCED ✅ (2026-06-29)
 
-**Confirmed:**
-- The Rwy 24 departures are the **GWC 2F** and **HAZEL 2F** SIDs.
-- They climb **south-west** toward Bentley and the A31, reaching **at/above
-  4,000 ft over the A31 Hog's Back** — so `designAltitudeFt: 4000` is correct.
-- There is a documented sensitivity area "1 NM NW of the nominal track of the
-  GWC 2F and HAZEL 2F SIDs", consistent with our ~1.5 nm tolerance.
+**Confirmed (context):**
+- The Rwy 24 departures are the **GWC 2F** and **HAZEL 2F** SIDs, climbing
+  **south-west** toward Bentley and the A31, reaching **≥ 4,000 ft over the A31
+  Hog's Back**.
 
-**Not obtainable by open research:** the **exact RNAV waypoint coordinates**. The
-authoritative sources — the UK AIP / NATS eAIP (EGLF), the CAA airspace-change
-PDFs, and chart providers (Navigraph/Jeppesen) — are access-gated and returned
-HTTP 403 to automated fetches. I did **not** fabricate coordinates.
+**Resolved:** the real published geometry was extracted from **Farnborough WebTrak**
+on a non-sandboxed machine. WebTrak loads all overlays at startup (no fetch on
+layer toggle); the geometry comes from
+`POST https://focus-apis.emsbk.com/productinfo` (`…&sitename=fab&action=get_layers`)
+— 17 EPSG:4326 polygons: lateral SID/STAR swaths ("Corridors") plus altitude-banded
+Departures/Arrivals probability zones. Captured to `docs/data/webtrak-fab-layers.*`.
 
-So `config/corridors.ts` keeps a **hand-drawn approximation** of the confirmed
-routing (SW from the runway, crossing the A31 ridge), with the SID names and
-altitude target corrected, and a clear comment that the lat/lon are not the
-published centreline.
-
-**To finish this (needs AIP/WebTrak access from a normal network):** see the
-step-by-step handoff in [`CORRIDOR-DATA-EXTRACTION.md`](./CORRIDOR-DATA-EXTRACTION.md)
-— extract the SID geometry from Farnborough WebTrak (`eu.webtrak.aero/fab`, layers
-are GeoJSON) or the EGLF AIP chart, then drop the centrelines into
-`config/corridors.ts`. The shape and altitude are the right ballpark today; only the
-precise lateral track is approximate, and R3 is labelled indicative accordingly.
+`config/corridors.ts` now holds these **real polygon swaths** (no more hand-drawn
+centrelines). R2/R3 use point-in-polygon: R2 flags a flight below the published
+altitude band of the zone it is in; R3 flags a flight inside none of the swaths.
+Still labelled **indicative** (the swaths are "most likely here" envelopes). Full
+trail and wiring notes: [`CORRIDOR-DATA-EXTRACTION.md`](./CORRIDOR-DATA-EXTRACTION.md).
 
 **Sources:**
+- Farnborough WebTrak (EMS Brüel & Kjær / Envirosuite) — published corridor/route
+  layer geometry. Used under WebTrak's terms (attribution; non-commercial).
 - CAA Farnborough airspace change consultation (Part E) & post-implementation
-  review (Annex A) — referenced for SID names and the ≥4,000 ft over A31 profile.
-- NATS eAIP EGLF (AD 2) — authoritative SID charts (access-gated).
+  review (Annex A) — SID names and the ≥4,000 ft over A31 profile.
+- NATS eAIP EGLF (AD 2) — authoritative SID charts (access-gated; not needed).

@@ -44,8 +44,11 @@ each phase's Definition of Done for review.
   [`docs/PHASE-5-NOTES.md`](./docs/PHASE-5-NOTES.md).
 - **Phase 6 — Polish: first pass complete, pending review.** Settings (N, radius,
   units, home-location fallback, complainant details), offline handling, and
-  edge-state polish. Two accuracy items (Farnborough exact hours, real AIP corridor
-  waypoints) deferred pending data. See [`docs/PHASE-6-NOTES.md`](./docs/PHASE-6-NOTES.md).
+  edge-state polish. Both deferred accuracy items are now resolved: Farnborough
+  operating hours confirmed, and the corridor geometry replaced with the real
+  Farnborough WebTrak swaths (point-in-polygon R2/R3). See
+  [`docs/PHASE-6-NOTES.md`](./docs/PHASE-6-NOTES.md) and
+  [`docs/CORRIDOR-DATA-EXTRACTION.md`](./docs/CORRIDOR-DATA-EXTRACTION.md).
 
 ## Develop
 

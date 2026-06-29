@@ -1,61 +1,332 @@
 import type { Airport, LatLon } from './types'
 
-// Seed corridor geometry from Build Plan §7. These are ROUGH centrelines for the
-// indicative R3 (corridor-proximity) and context for R2 (altitude-floor) rules.
-// They are NOT real AIP waypoints — replace with published RNAV SID/STAR
-// coordinates in Phase 6. Everything here is deliberately approximate.
+// Farnborough corridor geometry — the REAL published swaths from Farnborough
+// WebTrak (EMS Brüel & Kjær / Envirosuite), captured 2026-06-29. Source data and
+// provenance: docs/data/webtrak-fab-layers.geojson (endpoint + capture notes).
+// Raw response: docs/data/webtrak-fab-layers.raw.json.
+//
+// Three kinds of polygon, all in EPSG:4326 (lon/lat):
+//  - lateral SID/STAR swaths  (group "Corridors", no altitude band) — drive R3
+//    "off designated track" via point-in-polygon.
+//  - altitude-banded probability zones (groups "Departures"/"Arrivals") — the
+//    band is the published expected altitude AT THAT LOCATION (parsed from the
+//    WebTrak layer name; per-vertex z in the feed is bogus field-elevation
+//    extrusion). Drive a location-aware R2 "below expected altitude" check.
+// Still INDICATIVE: WebTrak swaths are "most likely here" envelopes, and aircraft
+// on approach/departure are legitimately low. Used under WebTrak's terms
+// (attribution; non-commercial).
 
-/** Corridor type, for map colour-coding. Extend as arrival/other routes are added. */
+/** Corridor type, for map colour-coding. */
 export type CorridorKind = 'departure' | 'arrival'
 
 export type Corridor = {
   id: string
   airport: Airport['icao']
   kind: CorridorKind
+  /** WebTrak layer group: 'Corridors' (lateral) | 'Departures' | 'Arrivals'. */
+  group: 'Corridors' | 'Departures' | 'Arrivals'
+  /** WebTrak layer name, shown in reasons/legend. */
   label: string
-  /** Ordered centreline points (rough). Lateral offset beyond `toluranceNm` => indicative flag. */
-  centreline: LatLon[]
-  /** Lateral tolerance in nautical miles before R3 flags "off designated track". */
-  toleranceNm: number
+  /** Closed swath polygon (lon/lat), exterior ring; point-in-polygon tested. */
+  polygon: LatLon[]
   /**
-   * Design altitude target along this corridor, in feet AMSL, used by R2 as an
-   * indicative floor. e.g. "≥ 4,000 ft over the Hog's Back / A31".
+   * Published expected altitude band inside this polygon, ft AMSL, parsed from the
+   * WebTrak layer name. Only set on the altitude-banded Departures/Arrivals zones;
+   * the lateral "Corridors" swaths leave both null. `minAltFt` is the value R2
+   * checks a flight against ("should be at least this high here").
    */
-  designAltitudeFt?: number
-  note?: string
+  minAltFt: number | null
+  maxAltFt: number | null
 }
 
 export const CORRIDORS: Corridor[] = [
   {
-    id: 'EGLF-RW24-SOUTH-DEP',
+    id: 'EGLF-57',
+    airport: 'EGLF',
+    kind: 'arrival',
+    group: 'Corridors',
+    label: "24 Arrivals North",
+    minAltFt: null,
+    maxAltFt: null,
+    polygon: poly([
+    [-1.203401,51.496457], [-1.129004,51.402354], [-1.092858,51.35554], [-0.996028,51.313159],
+    [-0.840591,51.246522], [-0.739585,51.23018], [-0.709975,51.224725], [-0.681875,51.219081],
+    [-0.667719,51.225591], [-0.622926,51.244767], [-0.602773,51.226193], [-0.648288,51.20672],
+    [-0.676722,51.196842], [-0.719618,51.203083], [-0.74914,51.208523], [-0.855403,51.226062],
+    [-1.016451,51.294687], [-1.120147,51.340943], [-1.161231,51.392418], [-1.235669,51.486488],
+    ]),
+  },
+  {
+    id: 'EGLF-58',
+    airport: 'EGLF',
+    kind: 'arrival',
+    group: 'Corridors',
+    label: "06 Arrivals North",
+    minAltFt: null,
+    maxAltFt: null,
+    polygon: poly([
+    [-1.203478,51.496605], [-1.145315,51.422652], [-1.10514,51.37119], [-1.097532,51.361742],
+    [-1.093303,51.35538], [-1.084618,51.352093], [-1.035698,51.330977], [-0.886991,51.267141],
+    [-0.838109,51.245966], [-0.858454,51.227474], [-0.90729,51.248625], [-1.055993,51.312446],
+    [-1.104966,51.333581], [-1.120552,51.340753], [-1.129726,51.351801], [-1.1373,51.361197],
+    [-1.177592,51.412762], [-1.235782,51.486682],
+    ]),
+  },
+  {
+    id: 'EGLF-59',
+    airport: 'EGLF',
+    kind: 'arrival',
+    group: 'Corridors',
+    label: "06 Arrivals South",
+    minAltFt: null,
+    maxAltFt: null,
+    polygon: poly([
+    [-0.817174,51.014754], [-0.815664,51.021454], [-0.805373,51.064828], [-0.800077,51.088054],
+    [-0.796202,51.100338], [-0.785538,51.134678], [-0.783351,51.141498], [-0.780722,51.1473],
+    [-0.764818,51.182091], [-0.730458,51.175875], [-0.746383,51.141095], [-0.74864,51.136184],
+    [-0.750501,51.130309], [-0.761185,51.095985], [-0.764906,51.084258], [-0.770085,51.061564],
+    [-0.780406,51.018206], [-0.781902,51.011587],
+    ]),
+  },
+  {
+    id: 'EGLF-60',
+    airport: 'EGLF',
+    kind: 'arrival',
+    group: 'Corridors',
+    label: "24 Arrivals South",
+    minAltFt: null,
+    maxAltFt: null,
+    polygon: poly([
+    [-0.817142,51.014841], [-0.802735,51.076014], [-0.800133,51.08776], [-0.796795,51.098622],
+    [-0.783271,51.141595], [-0.773084,51.164041], [-0.768819,51.173307], [-0.762094,51.185462],
+    [-0.750086,51.1916], [-0.690857,51.216479], [-0.623418,51.244541], [-0.603661,51.225801],
+    [-0.671036,51.197771], [-0.729759,51.173112], [-0.731811,51.171899], [-0.734508,51.166998],
+    [-0.738738,51.157823], [-0.748546,51.136316], [-0.76177,51.094298], [-0.764935,51.084065],
+    [-0.767425,51.072808], [-0.781901,51.011538],
+    ]),
+  },
+  {
+    id: 'EGLF-65',
     airport: 'EGLF',
     kind: 'departure',
-    label: 'Farnborough Rwy 24 departures (GWC 2F / HAZEL 2F SIDs)',
-    // STILL APPROXIMATE — to replace with real WebTrak/AIP geometry, follow
-    // docs/CORRIDOR-DATA-EXTRACTION.md.
-    // Confirmed from CAA/airport sources (June 2026): the Rwy 24
-    // SIDs are GWC 2F and HAZEL 2F; they climb southwest toward Bentley and the A31,
-    // reaching at/above 4,000 ft over the A31 Hog's Back. The exact RNAV waypoint
-    // coordinates live in the gated UK AIP / chart providers and could not be
-    // extracted by open research — these points remain a hand-drawn approximation
-    // of that confirmed routing, NOT the published centreline. Replace lat/lon with
-    // the AIP fixes when available; the shape/altitude target are the right ballpark.
-    centreline: [
-      { lat: 51.2758, lon: -0.7763 }, // EGLF (~Rwy 24 departure)
-      { lat: 51.2655, lon: -0.789 }, // climb ahead, runway track ~244°
-      { lat: 51.2451, lon: -0.7985 }, // turning left toward the south-west
-      { lat: 51.2208, lon: -0.806 }, // toward Bentley / the A31 Hog's Back
-      { lat: 51.198, lon: -0.811 }, // crossing the A31 ridge (design ≥ 4,000 ft)
-    ],
-    toleranceNm: 1.5,
-    designAltitudeFt: 4000, // confirmed: SIDs reach ≥4,000 ft over the A31 Hog's Back
-    note: 'Indicative only, and the centreline is approximate (see code comment) — exact AIP waypoints still to be sourced. Aircraft legitimately on approach/departure can sit below the profile; review before complaining.',
+    group: 'Corridors',
+    label: "24 Departures",
+    minAltFt: null,
+    maxAltFt: null,
+    polygon: poly([
+    [-0.789269,51.268663], [-0.80515,51.262519], [-0.81753,51.255769], [-0.829134,51.246181],
+    [-0.835311,51.232799], [-0.843752,51.215549], [-0.87647,51.169752], [-0.893228,51.146621],
+    [-0.900333,51.136691], [-0.904106,51.131305], [-0.914554,51.118679], [-0.930481,51.113264],
+    [-0.942118,51.109854], [-0.969934,51.101716], [-0.980393,51.098709], [-0.986902,51.096058],
+    [-0.987512,51.094027], [-0.985535,51.085785], [-0.976828,51.048584], [-0.966487,51.006966],
+    [-1.001679,51.003483], [-1.012076,51.0452], [-1.020826,51.082461], [-1.022818,51.090738],
+    [-1.023335,51.108451], [-0.995356,51.119115], [-0.984879,51.122128], [-0.95718,51.130232],
+    [-0.945539,51.133644], [-0.941368,51.135497], [-0.936679,51.140534], [-0.932973,51.14583],
+    [-0.925784,51.155887], [-0.90905,51.179007], [-0.876395,51.224762], [-0.861252,51.240419],
+    [-0.846366,51.254235], [-0.826595,51.26273], [-0.810973,51.268714], [-0.79231,51.272732],
+    ]),
+  },
+  {
+    id: 'EGLF-71',
+    airport: 'EGLF',
+    kind: 'departure',
+    group: 'Corridors',
+    label: "06 Departures 03",
+    minAltFt: null,
+    maxAltFt: null,
+    polygon: poly([
+    [-0.764504,51.2822], [-0.756905,51.285192], [-0.751853,51.287743], [-0.741408,51.291862],
+    [-0.729456,51.296979], [-0.714411,51.303416], [-0.698159,51.310787], [-0.666692,51.321057],
+    [-0.634617,51.289949], [-0.621262,51.274313], [-0.602854,51.244992], [-0.648551,51.225999],
+    [-0.683936,51.214469], [-0.725144,51.200649], [-0.802106,51.167493], [-0.872438,51.136757],
+    [-0.918387,51.116761], [-0.988883,51.096885], [-0.982238,51.071937], [-0.97263,51.031324],
+    [-0.966771,51.00663], [-1.002,51.003299], [-1.00788,51.027998], [-1.01752,51.068615],
+    [-1.023417,51.108652], [-0.93607,51.136288], [-0.892819,51.155217], [-0.822415,51.185989],
+    [-0.743717,51.219857], [-0.700618,51.234352], [-0.665229,51.245884], [-0.644576,51.253119],
+    [-0.652949,51.26383], [-0.666264,51.279406], [-0.678752,51.296578], [-0.686126,51.296472],
+    [-0.705111,51.292263], [-0.722032,51.288254], [-0.735371,51.284712], [-0.746766,51.281804],
+    [-0.752811,51.280449], [-0.761189,51.278215],
+    ]),
+  },
+  {
+    id: 'EGLF-103',
+    airport: 'EGLF',
+    kind: 'departure',
+    group: 'Departures',
+    label: "Runway 06 Departures are most likely here, to be up to 4000ft",
+    minAltFt: null,
+    maxAltFt: 4000,
+    polygon: poly([
+    [-0.775053,51.279363], [-0.68545,51.312386], [-0.682255,51.31254], [-0.678994,51.312605],
+    [-0.676091,51.312461], [-0.672705,51.312263], [-0.670018,51.311949], [-0.66747,51.311638],
+    [-0.665411,51.311249], [-0.663077,51.310812], [-0.660133,51.310102], [-0.657815,51.30936],
+    [-0.654882,51.308433], [-0.651959,51.307332], [-0.649723,51.306332], [-0.647762,51.30538],
+    [-0.645404,51.304073], [-0.643185,51.302769], [-0.640916,51.301073], [-0.638719,51.299335],
+    [-0.637002,51.297693], [-0.635495,51.296012], [-0.633735,51.293849], [-0.619226,51.276484],
+    [-0.618525,51.275495], [-0.617296,51.273559], [-0.616285,51.271696], [-0.615341,51.269592],
+    [-0.614557,51.267631], [-0.61396,51.265256], [-0.613493,51.262501], [-0.613315,51.260587],
+    [-0.613213,51.258838], [-0.613426,51.256807], [-0.613783,51.254099], [-0.614672,51.251539],
+    [-0.615924,51.248239], [-0.617476,51.24542], [-0.619128,51.242739], [-0.621543,51.239938],
+    [-0.62417,51.237209], [-0.62733,51.234627], [-0.63081,51.232118], [-0.634718,51.229686],
+    [-0.63849,51.227795], [-0.643024,51.225782], [-0.648196,51.223986], [-0.676668,51.214443],
+    [-0.696762,51.238321], [-0.66685,51.248315], [-0.664517,51.249262], [-0.662009,51.250671],
+    [-0.66011,51.252093], [-0.658765,51.25349], [-0.657697,51.254894], [-0.656956,51.256408],
+    [-0.656427,51.2581], [-0.656292,51.25966], [-0.656434,51.261227], [-0.656958,51.262905],
+    [-0.657715,51.264345], [-0.67234,51.281801], [-0.673344,51.282759], [-0.674357,51.283544],
+    [-0.675592,51.284333], [-0.676887,51.285019], [-0.678673,51.285853], [-0.680417,51.286444],
+    [-0.682276,51.286932], [-0.684196,51.287318], [-0.687334,51.287727], [-0.690767,51.28776],
+    [-0.695355,51.287207], [-0.697114,51.286796], [-0.698626,51.286337], [-0.772061,51.274997],
+    ]),
+  },
+  {
+    id: 'EGLF-105',
+    airport: 'EGLF',
+    kind: 'departure',
+    group: 'Departures',
+    label: "Runway 24 Departures are most likely here, to be up to 4000ft",
+    minAltFt: null,
+    maxAltFt: 4000,
+    polygon: poly([
+    [-0.780806,51.277364], [-0.856806,51.249939], [-0.858218,51.249193], [-0.86057,51.247716],
+    [-0.862003,51.246656], [-0.86351,51.245511], [-0.86488,51.24432], [-0.866467,51.242916],
+    [-0.86828,51.241125], [-0.869889,51.239243], [-0.891731,51.209031], [-0.854055,51.200287],
+    [-0.839231,51.225632], [-0.777727,51.2727],
+    ]),
+  },
+  {
+    id: 'EGLF-106',
+    airport: 'EGLF',
+    kind: 'departure',
+    group: 'Departures',
+    label: "Runway 06 and Runway 24 departures are most likely to be here between 4000 and 7000ft",
+    minAltFt: 4000,
+    maxAltFt: 7000,
+    polygon: poly([
+    [-0.696984,51.238417], [-0.743269,51.222958], [-0.875861,51.165382], [-0.853832,51.19998],
+    [-0.891331,51.208946], [-0.940525,51.140859], [-0.94462,51.137618], [-0.985025,51.124446],
+    [-0.967335,51.100116], [-0.91669,51.11455], [-0.724683,51.198574], [-0.676738,51.214614],
+    ]),
+  },
+  {
+    id: 'EGLF-107',
+    airport: 'EGLF',
+    kind: 'departure',
+    group: 'Departures',
+    label: "Runway 06 and Runway 24 departures are occasionally here between 4000 and 7000ft",
+    minAltFt: 4000,
+    maxAltFt: 7000,
+    polygon: poly([
+    [-0.967628,51.100183], [-0.970841,51.098914], [-0.974069,51.097313], [-0.977325,51.09505],
+    [-0.979259,51.092929], [-0.980674,51.090634], [-0.981564,51.08833], [-0.981942,51.085686],
+    [-0.964177,51.010988], [-0.963498,51.008491], [-0.962564,51.005823], [-0.958554,50.995481],
+    [-1.015376,50.986685], [-1.026184,51.016525], [-1.013964,51.038188], [-1.024246,51.08061],
+    [-1.024418,51.082767], [-1.024831,51.085425], [-1.024681,51.087126], [-1.024497,51.088887],
+    [-1.024321,51.090513], [-1.023917,51.092406], [-1.0234,51.094433], [-1.022786,51.096187],
+    [-1.021946,51.098209], [-1.021122,51.099824], [-1.020188,51.101504], [-1.019036,51.103249],
+    [-1.017557,51.105056], [-1.016529,51.106396], [-1.014945,51.108134], [-1.013706,51.109402],
+    [-1.012022,51.110934], [-1.010348,51.112263], [-1.008564,51.113658], [-1.006896,51.114851],
+    [-1.004787,51.11624], [-1.003017,51.117295], [-1.001138,51.118349], [-0.999152,51.119401],
+    [-0.997171,51.120317], [-0.995083,51.121231], [-0.992779,51.122142], [-0.990586,51.122986],
+    [-0.988506,51.123697], [-0.985666,51.12453],
+    ]),
+  },
+  {
+    id: 'EGLF-100',
+    airport: 'EGLF',
+    kind: 'arrival',
+    group: 'Arrivals',
+    label: "Southerly arrivals are most likely to be here between 5000 - 6000ft",
+    minAltFt: 5000,
+    maxAltFt: 6000,
+    polygon: poly([
+    [-0.706918,50.957912], [-0.876917,50.934784], [-0.817598,50.997644], [-0.827141,51.012568],
+    [-0.742788,51.013454],
+    ]),
+  },
+  {
+    id: 'EGLF-101',
+    airport: 'EGLF',
+    kind: 'arrival',
+    group: 'Arrivals',
+    label: "Southerly arrivals are most likely to be here between 6000 - 7000ft",
+    minAltFt: 6000,
+    maxAltFt: 7000,
+    polygon: poly([
+    [-0.475755,50.857127], [-0.572973,50.856498], [-0.603574,50.885092], [-0.656406,50.876223],
+    [-0.822867,50.879655], [-0.877008,50.934501], [-0.684625,50.960667], [-0.637338,50.91664],
+    [-0.571161,50.916524], [-0.549731,50.894122],
+    ]),
+  },
+  {
+    id: 'EGLF-102',
+    airport: 'EGLF',
+    kind: 'arrival',
+    group: 'Arrivals',
+    label: "Arrivals are most likely to be here below 4000ft",
+    minAltFt: null,
+    maxAltFt: 4000,
+    polygon: poly([
+    [-0.968887,51.159258], [-1.000129,51.200965], [-0.922858,51.240003], [-0.908736,51.248377],
+    [-0.879781,51.266676], [-0.854697,51.281902], [-0.836011,51.293713], [-0.801745,51.285123],
+    [-0.788692,51.283591], [-0.779638,51.284191], [-0.770559,51.285305], [-0.757729,51.287632],
+    [-0.63335,51.336891], [-0.532388,51.335579], [-0.526495,51.333646], [-0.519391,51.330457],
+    [-0.514155,51.327646], [-0.508706,51.323816], [-0.503804,51.31983], [-0.499209,51.315175],
+    [-0.495431,51.310368], [-0.492934,51.30677], [-0.490502,51.301992], [-0.488895,51.296893],
+    [-0.488133,51.291138], [-0.488177,51.2854], [-0.489565,51.279691], [-0.490879,51.275331],
+    [-0.492703,51.271488], [-0.496212,51.266331], [-0.500272,51.261623], [-0.506934,51.255629],
+    [-0.51309,51.251267], [-0.520329,51.247272], [-0.683731,51.177969], [-0.68621,51.159887],
+    [-0.707055,51.141152], [-0.699731,51.096641], [-0.785809,51.080269], [-0.873139,51.094385],
+    ]),
+  },
+  {
+    id: 'EGLF-96',
+    airport: 'EGLF',
+    kind: 'arrival',
+    group: 'Arrivals',
+    label: "Northerly arrivals are most likely to be here between 4000 - 7000ft",
+    minAltFt: 4000,
+    maxAltFt: 7000,
+    polygon: poly([
+    [-0.836204,51.293802], [-0.919577,51.241922], [-1.144735,51.321748], [-1.174197,51.360069],
+    [-1.15991,51.394144], [-0.981104,51.414173],
+    ]),
+  },
+  {
+    id: 'EGLF-98',
+    airport: 'EGLF',
+    kind: 'arrival',
+    group: 'Arrivals',
+    label: "Southerly arrivals are most likely to be here between 4000 - 5000ft",
+    minAltFt: 4000,
+    maxAltFt: 5000,
+    polygon: poly([
+    [-0.706587,50.957758], [-0.742904,51.013557], [-0.826985,51.012873], [-0.834993,51.024206],
+    [-0.842239,51.073216], [-0.87315,51.094493], [-0.78569,51.080235], [-0.699722,51.096593],
+    [-0.690214,51.043179], [-0.621064,50.969302],
+    ]),
+  },
+  {
+    id: 'EGLF-99',
+    airport: 'EGLF',
+    kind: 'arrival',
+    group: 'Arrivals',
+    label: "Southerly arrivals are most likely to be here between 5000 - 6000ft",
+    minAltFt: 5000,
+    maxAltFt: 6000,
+    polygon: poly([
+    [-0.68396,50.960607], [-0.620551,50.969273], [-0.571073,50.916724], [-0.63687,50.916584],
+    ]),
   },
 ]
 
+/** Compact [lon, lat] pairs → LatLon[] (keeps the big tables above readable). */
+function poly(pairs: [number, number][]): LatLon[] {
+  return pairs.map(([lon, lat]) => ({ lat, lon }))
+}
+
 /**
  * Controlled-airspace floors over the user's home area (Lower Bourne), AMSL feet.
- * Context for altitude rules; not a corridor centreline.
+ * Context for altitude rules; not a corridor.
  */
 export const HOME_AREA_CTA = {
   label: 'CTA over Lower Bourne',

@@ -6,7 +6,7 @@ import { AIRPORTS } from '../config/airports'
 import { CORRIDORS } from '../config/corridors'
 import { RULE_THRESHOLDS } from '../config/rules'
 import { UK_BANK_HOLIDAYS } from '../config/calendar'
-import { haversineNm, distanceToPolylineNm } from './geo'
+import { haversineNm, pointInPolygon } from './geo'
 
 // Rules engine (Build Plan §8). Each rule is a small typed object; the engine runs
 // the applicable ones over a flight and returns the triggered flags. Adding/refining
@@ -134,28 +134,37 @@ const r1Hours: Rule = {
 }
 
 // ── R2 Altitude floor (indicative, Farnborough) ──────────────────────────────
-function farnboroughDesignFloorFt(): number | null {
-  const c = CORRIDORS.find((c) => c.airport === 'EGLF' && c.designAltitudeFt != null)
-  return c?.designAltitudeFt ?? null
-}
+// The WebTrak Departures/Arrivals zones carry the published expected altitude
+// band AT THEIR LOCATION (minAltFt set). A flight inside such a zone but below its
+// band floor is unusually low for where it is — a location-aware floor that beats
+// a single design altitude. The lateral "Corridors" swaths have no band (skipped).
+const EGLF_ALT_ZONES = CORRIDORS.filter((c) => c.airport === 'EGLF' && c.minAltFt != null)
 
 const r2Altitude: Rule = {
   id: 'R2-altitude',
   severity: 'indicative',
   appliesTo: (f, ctx) =>
     ctx.owningAirport?.icao === 'EGLF' && f.altBaroFt != null && f.lat != null && f.lon != null,
-  evaluate: (f, ctx) => {
-    const floor = farnboroughDesignFloorFt()
+  evaluate: (f) => {
+    const pos = { lat: f.lat!, lon: f.lon! }
+    // Among the altitude-banded zones the flight is inside, use the most lenient
+    // floor (lowest minAltFt) to stay conservative — flag only when clearly low.
+    let floor: number | null = null
+    let zoneLabel = ''
+    for (const z of EGLF_ALT_ZONES) {
+      if (!pointInPolygon(pos, z.polygon)) continue
+      if (floor == null || z.minAltFt! < floor) {
+        floor = z.minAltFt!
+        zoneLabel = z.label
+      }
+    }
     if (floor == null) return { triggered: false }
-    const airport = ctx.owningAirport!
-    const dNm = haversineNm({ lat: f.lat!, lon: f.lon! }, airport.position)
-    if (dNm > RULE_THRESHOLDS.altitudeCheckMaxDistanceNm) return { triggered: false }
     if (f.altBaroFt! < floor - RULE_THRESHOLDS.altitudeFloorMarginFt) {
       return {
         triggered: true,
         severity: 'indicative',
         short: 'Below profile',
-        reason: `${f.altBaroFt!.toLocaleString()} ft, ${dNm.toFixed(1)} nm from Farnborough — below the ~${floor.toLocaleString()} ft design profile over the Hog's Back. Indicative; aircraft on approach are legitimately low.`,
+        reason: `${f.altBaroFt!.toLocaleString()} ft — below the expected ${floor.toLocaleString()} ft+ here ("${zoneLabel}"). Indicative; aircraft on approach are legitimately low.`,
       }
     }
     return { triggered: false }
@@ -163,39 +172,38 @@ const r2Altitude: Rule = {
 }
 
 // ── R3 Corridor proximity (indicative) ───────────────────────────────────────
+// The published swaths (the tight SID/STAR "Corridors" plus the broader
+// Departures/Arrivals probability zones) together cover everywhere Farnborough
+// traffic is expected. An EGLF flight in the terminal area inside NONE of them is
+// off any designated route. Testing the union (not just the lateral corridors)
+// avoids false positives near the field, where the tight swaths leave gaps.
+// Point-in-polygon, so no tolerance tuning needed.
+const EGLF_CORRIDORS = CORRIDORS.filter((c) => c.airport === 'EGLF')
+
 const r3Corridor: Rule = {
   id: 'R3-corridor',
   severity: 'indicative',
   appliesTo: (f, ctx) =>
-    ctx.owningAirport != null &&
+    ctx.owningAirport?.icao === 'EGLF' &&
     f.lat != null &&
     f.lon != null &&
-    CORRIDORS.some((c) => c.airport === ctx.owningAirport!.icao),
+    EGLF_CORRIDORS.length > 0,
   evaluate: (f, ctx) => {
     const airport = ctx.owningAirport!
     const pos = { lat: f.lat!, lon: f.lon! }
-    // Only within the terminal area is "off track" meaningful.
-    if (haversineNm(pos, airport.position) > RULE_THRESHOLDS.altitudeCheckMaxDistanceNm) {
+    // Only meaningful in the terminal area; far out, a flight is legitimately not
+    // yet on (or already off) a SID/STAR and "off track" would be noise.
+    const dNm = haversineNm(pos, airport.position)
+    if (dNm > RULE_THRESHOLDS.corridorCheckMaxDistanceNm) return { triggered: false }
+    if (EGLF_CORRIDORS.some((c) => pointInPolygon(pos, c.polygon))) {
       return { triggered: false }
     }
-    const corridors = CORRIDORS.filter((c) => c.airport === airport.icao)
-    let best: { offset: number; tol: number; label: string } | null = null
-    for (const c of corridors) {
-      const offset = distanceToPolylineNm(pos, c.centreline)
-      const tol = c.toleranceNm ?? RULE_THRESHOLDS.corridorDefaultToleranceNm
-      if (!best || offset < best.offset) best = { offset, tol, label: c.label }
+    return {
+      triggered: true,
+      severity: 'indicative',
+      short: 'Off track',
+      reason: `${dNm.toFixed(1)} nm from Farnborough but outside every published departure/arrival corridor swath. Indicative; review before acting.`,
     }
-    if (!best) return { triggered: false }
-    // Flag a moderate offset; beyond the upper bound it's a different route, not "off track".
-    if (best.offset > best.tol && best.offset <= RULE_THRESHOLDS.corridorMaxOffsetNm) {
-      return {
-        triggered: true,
-        severity: 'indicative',
-        short: 'Off track',
-        reason: `${best.offset.toFixed(1)} nm from the ${best.label} centreline (tolerance ${best.tol} nm). Indicative; only that SID is encoded as seed geometry.`,
-      }
-    }
-    return { triggered: false }
   },
 }
 
