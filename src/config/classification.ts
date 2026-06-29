@@ -101,6 +101,22 @@ export function categoryFitsAirport(
 }
 
 /**
+ * Max-bound-only size check (ignores the band's lower bound). Used by the
+ * trajectory detector: corridor alignment is decisive evidence of a movement, so a
+ * SMALL or unknown category must not veto it (ADS-B category is often wrong/missing
+ * for biz jets, and a light aircraft flying a Farnborough SID/STAR is a Farnborough
+ * movement, not Blackbushe). We still exclude aircraft too LARGE for the airport.
+ */
+export function categoryNotTooLargeForAirport(
+  category: string | null,
+  icao: Airport['icao'],
+): boolean {
+  const rank = category ? SIZE_RANK[category.toUpperCase()] : undefined
+  if (rank == null) return true
+  return rank <= SIZE_RANK[AIRPORT_SIZE_RANGE[icao].max]
+}
+
+/**
  * Optional callsign-prefix → airport hints (weakest signal; indicative).
  * Left empty on purpose: callsign prefixes identify the *operator*, not the
  * airport, so we only add a mapping when we're confident a prefix is a reliable

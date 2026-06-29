@@ -1,7 +1,7 @@
 import type { NormalizedFlight } from './adsb'
 import { AIRPORTS } from '../config/airports'
 import { CORRIDORS } from '../config/corridors'
-import { TRAJECTORY_THRESHOLDS as T, categoryFitsAirport } from '../config/classification'
+import { TRAJECTORY_THRESHOLDS as T, categoryNotTooLargeForAirport } from '../config/classification'
 import { haversineNm, bearingDeg, angularDiff, pointInPolygon } from './geo'
 
 // Farnborough arrival/descent trajectory heuristic (docs/ASCENT-DESCENT-HEURISTIC.md).
@@ -30,8 +30,12 @@ const insideAny = (pos: { lat: number; lon: number }, swaths: typeof CORRIDORS) 
  */
 export function farnboroughTrajectory(f: NormalizedFlight): TrajectoryResult {
   if (f.lat == null || f.lon == null) return NONE
-  // Size ceiling: a heavy near Farnborough is an overflight, not a movement.
-  if (!categoryFitsAirport(f.category, 'EGLF')) return NONE
+  // Exclude only aircraft too LARGE for Farnborough (a heavy near the field is an
+  // overflight). We do NOT apply the lower size bound here: a light aircraft flying
+  // a Farnborough corridor is a Farnborough movement, and corridor alignment (below)
+  // is stronger evidence than the often-wrong/missing ADS-B size category. This is
+  // what keeps an A1 in the Farnborough corridor from being mislabelled Blackbushe.
+  if (!categoryNotTooLargeForAirport(f.category, 'EGLF')) return NONE
 
   const pos = { lat: f.lat, lon: f.lon }
   const dNm = haversineNm(pos, EGLF.position)
