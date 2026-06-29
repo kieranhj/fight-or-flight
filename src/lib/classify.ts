@@ -5,6 +5,7 @@ import {
   CLASSIFY_THRESHOLDS,
   CALLSIGN_AIRPORT_HINTS,
   categoryFitsAirport,
+  AIRPORT_TERMINAL_RADIUS_NM,
 } from '../config/classification'
 import { haversineNm, bearingDeg, angularDiff } from './geo'
 import { farnboroughTrajectory } from './trajectory'
@@ -106,9 +107,11 @@ export function classifyFlight(f: NormalizedFlight): Classification {
       // Farnborough movement) — avoids proximity false positives.
       if (!categoryFitsAirport(f.category, a.icao)) continue
       const dNm = haversineNm(pos, a.position)
+      // Each airport contributes only within its OWN terminal radius — Blackbushe's
+      // is small, so light traffic far from it is en-route GA, not a movement there.
+      if (dNm > AIRPORT_TERMINAL_RADIUS_NM[a.icao]) continue
       if (!nearest || dNm < nearest.dNm) nearest = { airport: a, dNm }
     }
-    const closeEnough = nearest && nearest.dNm <= CLASSIFY_THRESHOLDS.terminalRadiusNm
     const lowEnough = alt == null || alt <= CLASSIFY_THRESHOLDS.terminalMaxAltFt
     // Reject low-and-far traffic flying well below any approach/departure profile —
     // a hobbyist GA aircraft transiting at ~1,500 ft several nm out is not a movement.
@@ -117,7 +120,7 @@ export function classifyFlight(f: NormalizedFlight): Classification {
       Math.max(0, (nearest?.dNm ?? 0) - CLASSIFY_THRESHOLDS.terminalNearFieldNm) *
         CLASSIFY_THRESHOLDS.terminalProfileFtPerNm
     const onProfile = alt == null || alt >= profileFloorFt
-    if (nearest && closeEnough && lowEnough && onProfile) {
+    if (nearest && lowEnough && onProfile) {
       let phase = ''
       if (f.track != null) {
         const toAirport = bearingDeg(pos, nearest.airport.position)
