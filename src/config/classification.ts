@@ -7,11 +7,6 @@ import type { Airport } from './types'
 
 export const CLASSIFY_THRESHOLDS = {
   /**
-   * A flight low and within this many nm of an airport is treated as plausibly
-   * arriving/departing there (terminal-area association). Indicative only.
-   */
-  terminalRadiusNm: 15,
-  /**
    * Only apply terminal-area association below this barometric altitude (ft).
    * Above it, an aircraft near an airport is more likely an overflight.
    */
@@ -93,6 +88,20 @@ export const AIRPORT_SIZE_RANGE: Record<Airport['icao'], { min?: SizeCat; max: S
   EGLK: { max: 'A2' },
   EGLL: { max: 'A5' },
   EGKK: { max: 'A5' },
+}
+
+/**
+ * Per-airport terminal radius (nm) for proximity attribution: a flight low and
+ * within this range of the airport is treated as plausibly arriving/departing there.
+ * Big airports have wide approach/departure patterns (~15 nm); Blackbushe is a small
+ * GA field whose movements stay within a few nm, so light traffic further out is
+ * en-route GA, not a Blackbushe movement, and is left unattributed. Indicative.
+ */
+export const AIRPORT_TERMINAL_RADIUS_NM: Record<Airport['icao'], number> = {
+  EGLF: 15,
+  EGLK: 6,
+  EGLL: 15,
+  EGKK: 15,
 }
 
 // Fixed-wing size ordering. A6 (high-performance) ranks above A5 here so it's
