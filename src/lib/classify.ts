@@ -110,7 +110,14 @@ export function classifyFlight(f: NormalizedFlight): Classification {
     }
     const closeEnough = nearest && nearest.dNm <= CLASSIFY_THRESHOLDS.terminalRadiusNm
     const lowEnough = alt == null || alt <= CLASSIFY_THRESHOLDS.terminalMaxAltFt
-    if (nearest && closeEnough && lowEnough) {
+    // Reject low-and-far traffic flying well below any approach/departure profile —
+    // a hobbyist GA aircraft transiting at ~1,500 ft several nm out is not a movement.
+    const profileFloorFt =
+      (nearest?.airport.elevationFt ?? 0) +
+      Math.max(0, (nearest?.dNm ?? 0) - CLASSIFY_THRESHOLDS.terminalNearFieldNm) *
+        CLASSIFY_THRESHOLDS.terminalProfileFtPerNm
+    const onProfile = alt == null || alt >= profileFloorFt
+    if (nearest && closeEnough && lowEnough && onProfile) {
       let phase = ''
       if (f.track != null) {
         const toAirport = bearingDeg(pos, nearest.airport.position)
