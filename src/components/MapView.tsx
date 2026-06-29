@@ -1,4 +1,4 @@
-import { Fragment, useEffect } from 'react'
+import { Fragment, useEffect, useRef } from 'react'
 import { MapContainer, TileLayer, Marker, Circle, Polygon, Polyline, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -103,17 +103,21 @@ const userIcon = L.divIcon({
   iconAnchor: [8, 8],
 })
 
-/** Fit the map to show the user plus all plotted aircraft (re-runs when they change). */
-function FitBounds({ points }: { points: L.LatLngExpression[] }) {
+/**
+ * Fit the map to show the user plus all plotted aircraft. Always frames once (the
+ * initial render); thereafter only re-frames on refresh when `recenter` is on, so
+ * turning it off preserves the user's pan/zoom.
+ */
+function FitBounds({ points, recenter }: { points: L.LatLngExpression[]; recenter: boolean }) {
   const map = useMap()
+  const hasFit = useRef(false)
   useEffect(() => {
     if (points.length === 0) return
-    if (points.length === 1) {
-      map.setView(points[0], 12)
-      return
-    }
-    map.fitBounds(L.latLngBounds(points), { padding: [40, 40], maxZoom: 13 })
-  }, [points, map])
+    if (!recenter && hasFit.current) return
+    if (points.length === 1) map.setView(points[0], 12)
+    else map.fitBounds(L.latLngBounds(points), { padding: [40, 40], maxZoom: 13 })
+    hasFit.current = true
+  }, [points, map, recenter])
   return null
 }
 
@@ -130,7 +134,7 @@ export default function MapView({
   selectedHex: string | null
   onSelect: (f: NormalizedFlight) => void
 }) {
-  const { showCorridors } = useSettings()
+  const { showCorridors, recenterOnRefresh } = useSettings()
   const plotted = flights.filter(
     (f): f is NormalizedFlight & { lat: number; lon: number } =>
       f.lat != null && f.lon != null,
@@ -190,7 +194,7 @@ export default function MapView({
             </Fragment>
           )
         })}
-        <FitBounds points={points} />
+        <FitBounds points={points} recenter={recenterOnRefresh} />
       </MapContainer>
       {corridorKinds.length > 0 && (
         <div className="pointer-events-none absolute bottom-2 left-2 z-[500] rounded-lg bg-slate-900/80 px-2 py-1.5 text-[10px] text-slate-200 backdrop-blur">

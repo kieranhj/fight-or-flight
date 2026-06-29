@@ -41,6 +41,9 @@ export type Settings = {
   showGroups: ShowGroups
   /** Draw the airport corridor overlays on the map, by kind. */
   showCorridors: ShowCorridors
+  /** Re-frame the map to fit all aircraft on every refresh. Off = stays put after
+   * the initial fit, preserving the user's pan/zoom. */
+  recenterOnRefresh: boolean
   /** Re-fetch automatically while results are shown (paused when hidden/offline). */
   autoRefresh: boolean
   /** Auto-refresh interval in seconds. */
@@ -58,6 +61,7 @@ export const DEFAULT_SETTINGS: Settings = {
   include: { military: false, rotorcraft: false, light: false },
   showGroups: { EGLF: true, EGLL: true, EGKK: true, transit: true, overflight: true, unknown: true },
   showCorridors: { departure: true, arrival: true },
+  recenterOnRefresh: true,
   autoRefresh: false,
   autoRefreshSec: 10,
 }
