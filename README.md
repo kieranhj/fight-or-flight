@@ -14,9 +14,9 @@ to the right authority. Hosted on GitHub Pages with a Cloudflare Worker data pro
 - **Proxy**: Cloudflare Worker (TypeScript) via Wrangler — the front-end talks only to it
 - **Hosting**: GitHub Pages (front-end) + `*.workers.dev` (Worker)
 
-See [`Aircraft-Complaint-App-Build-Plan.md`](./Aircraft-Complaint-App-Build-Plan.md)
-for the full plan and phased roadmap. Work proceeds one phase per PR, stopping at
-each phase's Definition of Done for review.
+See [`docs/BUILD-PLAN.md`](./docs/BUILD-PLAN.md) for the original plan and phased
+roadmap (all phases complete). Work proceeded one phase per PR, stopping at each
+phase's Definition of Done for review.
 
 ## Status
 
@@ -42,13 +42,29 @@ each phase's Definition of Done for review.
   editable complaint to the right authority (`mailto:` / copy + deep link — never
   auto-submitted); each is saved to a localStorage incident log with CSV export. See
   [`docs/PHASE-5-NOTES.md`](./docs/PHASE-5-NOTES.md).
-- **Phase 6 — Polish: first pass complete, pending review.** Settings (N, radius,
-  units, home-location fallback, complainant details), offline handling, and
-  edge-state polish. Both deferred accuracy items are now resolved: Farnborough
-  operating hours confirmed, and the corridor geometry replaced with the real
-  Farnborough WebTrak swaths (point-in-polygon R2/R3). See
-  [`docs/PHASE-6-NOTES.md`](./docs/PHASE-6-NOTES.md) and
+- **Phase 6 — Polish: ✅ done.** Settings (N, radius, units, home-location fallback,
+  complainant details), offline handling, and edge-state polish. Both deferred
+  accuracy items resolved: Farnborough operating hours confirmed, and the corridor
+  geometry replaced with the real Farnborough WebTrak swaths (point-in-polygon R2/R3).
+  See [`docs/PHASE-6-NOTES.md`](./docs/PHASE-6-NOTES.md) and
   [`docs/CORRIDOR-DATA-EXTRACTION.md`](./docs/CORRIDOR-DATA-EXTRACTION.md).
+
+### Beyond the plan
+
+- **Real Farnborough corridors.** Seed centrelines replaced with the published
+  Farnborough **WebTrak** swaths (arrival + departure), captured to
+  [`docs/data/`](./docs/data) and consumed by R2/R3 via point-in-polygon. See
+  [`docs/CORRIDOR-DATA-EXTRACTION.md`](./docs/CORRIDOR-DATA-EXTRACTION.md).
+- **Farnborough trajectory heuristic.** Route-less business jets are inferred as
+  arriving/departing Farnborough from descent/climb + corridor alignment, catching
+  inbound/outbound jets the route DB misses. See
+  [`docs/ASCENT-DESCENT-HEURISTIC.md`](./docs/ASCENT-DESCENT-HEURISTIC.md).
+- **Blackbushe (EGLK).** Added as a fourth airport. A per-airport ADS-B size band and
+  terminal radius attribute light GA near Farnborough to Blackbushe, and leave
+  low-and-far hobbyist traffic unattributed rather than false-positiving Farnborough.
+- **Map & display.** Per-kind corridor overlay toggles (departure / arrival), an
+  optional "re-centre on refresh" toggle, and very-low unknown-category aircraft drawn
+  as light rather than full-size.
 
 ## Develop
 
@@ -76,18 +92,25 @@ site points at it. One-time setup steps are in the Phase 0 notes.
 
 ```
 src/
-  config/   airports, corridors, rules, filters, types, api  (all thresholds live here)
-  lib/      adsb client (Worker contract)                     (grows each phase)
+  config/   airports (incl. Blackbushe), corridors (WebTrak swaths), rules,
+            classification, calendar, filters, types, api   (all thresholds live here)
+  lib/      adsb (Worker contract), classify, trajectory, rulesEngine,
+            assess, complaint, geo, aircraft, log, settings, …
+  components/  NearbyButton, FlightList/Card/Detail, MapView, FlagBadge,
+               AirportTag, KindTag, ComplaintModal, IncidentLog, Settings*
 worker/
   src/index.ts   Cloudflare Worker: GET /api/nearby (+ /health), CORS
   wrangler.toml
+docs/        BUILD-PLAN, PHASE-*-NOTES, DATA-RESEARCH, CORRIDOR-DATA-EXTRACTION,
+             ASCENT-DESCENT-HEURISTIC, data/ (captured WebTrak swaths)
 public/spike.html  Phase 0 in-browser CORS spike
-.github/workflows/deploy.yml
+.github/workflows/  deploy.yml (Pages) · deploy-worker.yml (Wrangler)
 ```
 
 ## Data & attribution
 
 Primary feed [airplanes.live](https://airplanes.live), fallback
-[adsb.lol](https://adsb.lol) — free, non-commercial, no uptime guarantee. Used
-under their terms with attribution. Free ADS-B feeds can miss very low or masked
-aircraft.
+[adsb.lol](https://adsb.lol); route enrichment via [adsbdb.com](https://www.adsbdb.com).
+Farnborough corridor geometry from **Farnborough WebTrak** (EMS Brüel & Kjær /
+Envirosuite). All free / non-commercial, no uptime guarantee, used under their terms
+with attribution. Free ADS-B feeds can miss very low or masked aircraft.
