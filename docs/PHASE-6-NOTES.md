@@ -1,7 +1,8 @@
 # Phase 6 — Polish
 
-Status: **first pass complete, pending your review.** Two data-accuracy items are
-deferred because they need your input (see "Deferred" below).
+Status: **✅ complete.** The two data-accuracy items that were deferred here have since
+been resolved: Farnborough hours confirmed, and the corridor geometry sourced from the
+real Farnborough WebTrak swaths (see [`CORRIDOR-DATA-EXTRACTION.md`](./CORRIDOR-DATA-EXTRACTION.md)).
 
 ## What shipped
 
@@ -34,7 +35,7 @@ permission/timeout errors, feeds-unavailable / stale handling, and now offline.
 | Settings (N, radius, home fallback, units) | ✅ all present + persisted |
 | Empty / error / no-GPS states | ✅ covered |
 | Attribution | ✅ in footer |
-| Refine corridor geometry + tune thresholds | ⏳ **deferred — needs data (below)** |
+| Refine corridor geometry + tune thresholds | ✅ done — real WebTrak swaths (point-in-polygon R2/R3) |
 
 ## Verified
 
@@ -50,8 +51,8 @@ permission/timeout errors, feeds-unavailable / stale handling, and now offline.
    holidays 08:00–20:00; no flying Christmas/Boxing Day — Condition 8 of
    20/00871/REVPP, cross-checked against Rushmoor BC and the airport FAQ. The
    config values already matched; the "placeholder/verify" caveat is removed.
-2. **Rwy 24 corridor — partially confirmed ⚠️.** SID names (GWC 2F / HAZEL 2F) and
-   the ≥4,000 ft over the A31 Hog's Back are confirmed; the exact RNAV **waypoint
-   coordinates** are in access-gated AIP/chart sources (403 to automated fetch) and
-   were **not** fabricated. The centreline stays a documented approximation —
-   replace with AIP fixes when available. R3 remains labelled indicative.
+2. **Rwy 24 corridor — RESOLVED ✅ (since).** The seed centreline has been replaced
+   with the **real Farnborough WebTrak swaths** (arrival + departure polygons),
+   consumed by R2/R3 via point-in-polygon. SID names (GWC 2F / HAZEL 2F) and the
+   ≥4,000 ft over the A31 Hog's Back remain confirmed. R3 stays labelled indicative.
+   See [`CORRIDOR-DATA-EXTRACTION.md`](./CORRIDOR-DATA-EXTRACTION.md).
