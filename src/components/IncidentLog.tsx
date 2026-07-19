@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   getIncidents,
   removeIncident,
@@ -6,6 +6,7 @@ import {
   incidentsToCsv,
   type Incident,
 } from '../lib/log'
+import { parseIncidentCsv, incidentToRecord, type ReviewRecord } from '../lib/incidentCsv'
 import { formatClock, formatAltitudeFt, formatDistance } from '../lib/format'
 import { useSettings } from './SettingsContext'
 
@@ -28,16 +29,27 @@ function downloadCsv() {
 export default function IncidentLog({
   onClose,
   onChange,
+  onReview,
 }: {
   onClose: () => void
   onChange?: () => void
+  onReview: (records: ReviewRecord[], title: string) => void
 }) {
   const [incidents, setIncidents] = useState<Incident[]>(() => getIncidents())
   const { units } = useSettings()
+  const fileRef = useRef<HTMLInputElement>(null)
 
   function refresh() {
     setIncidents(getIncidents())
     onChange?.()
+  }
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const text = await file.text()
+    onReview(parseIncidentCsv(text), file.name.replace(/\.csv$/i, '') || 'Imported log')
+    e.target.value = '' // allow re-picking the same file
   }
 
   return (
@@ -57,6 +69,24 @@ export default function IncidentLog({
           >
             Close
           </button>
+        </div>
+
+        <input ref={fileRef} type="file" accept=".csv,text/csv" hidden onChange={handleFile} />
+        <div className="mb-3 flex gap-2">
+          <button
+            onClick={() => fileRef.current?.click()}
+            className="flex-1 rounded-lg border border-slate-700 px-3 py-2 text-sm font-medium text-slate-200"
+          >
+            Import a log (CSV)…
+          </button>
+          {incidents.length > 0 && (
+            <button
+              onClick={() => onReview(incidents.map(incidentToRecord), 'Your incident log')}
+              className="flex-1 rounded-lg border border-slate-700 px-3 py-2 text-sm font-medium text-slate-200"
+            >
+              Review on map
+            </button>
+          )}
         </div>
 
         {incidents.length === 0 ? (

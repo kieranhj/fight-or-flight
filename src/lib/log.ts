@@ -22,6 +22,16 @@ export type Incident = {
   bearingDeg: number | null
   lat: number | null
   lon: number | null
+  // Extra telemetry captured so a later review can re-run the heuristics fully
+  // (track → arrival/departure, category → size, route → confirmed airport).
+  trackDeg: number | null
+  category: string | null
+  groundSpeedKt: number | null
+  verticalRateFpm: number | null
+  navAltitudeFt: number | null
+  originIcao: string | null
+  destinationIcao: string | null
+  military: boolean | null
   flags: LoggedFlag[]
 }
 
@@ -92,6 +102,14 @@ export function incidentFromFlight(
     bearingDeg: flight.bearingDeg,
     lat: flight.lat,
     lon: flight.lon,
+    trackDeg: flight.track,
+    category: flight.category,
+    groundSpeedKt: flight.groundSpeedKt,
+    verticalRateFpm: flight.verticalRateFpm,
+    navAltitudeFt: flight.navAltitudeFt,
+    originIcao: flight.route?.originIcao ?? null,
+    destinationIcao: flight.route?.destinationIcao ?? null,
+    military: flight.military,
     flags: assessment.flags.map((f) => ({ short: f.short, severity: f.severity, reason: f.reason })),
   }
 }
@@ -122,6 +140,14 @@ const CSV_HEADERS = [
   'bearing_deg',
   'lat',
   'lon',
+  'track_deg',
+  'category',
+  'ground_speed_kt',
+  'vertical_rate_fpm',
+  'nav_altitude_ft',
+  'origin_icao',
+  'destination_icao',
+  'military',
   'flags',
 ]
 
@@ -140,6 +166,14 @@ export function incidentsToCsv(): string {
       i.bearingDeg,
       i.lat,
       i.lon,
+      i.trackDeg,
+      i.category,
+      i.groundSpeedKt,
+      i.verticalRateFpm,
+      i.navAltitudeFt,
+      i.originIcao,
+      i.destinationIcao,
+      i.military == null ? null : i.military ? 'true' : 'false',
       i.flags.map((f) => `${f.short} (${f.severity})`).join('; '),
     ]
       .map(csvCell)
