@@ -5,6 +5,19 @@ compatibility_date = "2024-12-01"
 # Deploy with:  npm run worker:deploy   (wrangler deploy --config worker/wrangler.toml)
 # Local dev:    npm run worker:dev       (serves on http://127.0.0.1:8787)
 
+# Telemetry recorder (docs/TELEMETRY-CAPTURE-PLAN.md). Requires the Workers Paid
+# plan (compaction needs more than the free 10 ms CPU) and the R2 bucket to exist
+# BEFORE deploying:  npx wrangler r2 bucket create foaf-telemetry
+#   * * * * *   capture: poll feeds 4x/min, write minute object to R2
+#   5 * * * *   compact previous UTC hour's minute objects into an hour file
+#   15 0 * * *  merge previous UTC day's hour files into the day file
+[triggers]
+crons = ["* * * * *", "5 * * * *", "15 0 * * *"]
+
+[[r2_buckets]]
+binding = "TELEMETRY"
+bucket_name = "foaf-telemetry"
+
 # Optionally lock CORS to your Pages origin once known, e.g.
 # [vars]
 # ALLOWED_ORIGIN = "https://kieranhj.github.io"
