@@ -65,6 +65,13 @@ phase's Definition of Done for review.
 - **Map & display.** Per-kind corridor overlay toggles (departure / arrival), an
   optional "re-centre on refresh" toggle, and very-low unknown-category aircraft drawn
   as light rather than full-size.
+- **Incident-log review.** Import an incident-log CSV (or review your own saved log),
+  scroll the list or view it on the map, and tap any entry to re-run the classifier and
+  rules **at the logged time** — double-checking what the heuristics decided (owning
+  airport with a *matches / differs from recorded* indicator, hours, arrival/departure,
+  corridor inside/outside, route, recomputed flags). The CSV export now also captures
+  track / category / speed / vertical rate / nav-alt / route / military so future logs
+  support the full re-analysis.
 
 ## Develop
 
@@ -95,9 +102,10 @@ src/
   config/   airports (incl. Blackbushe), corridors (WebTrak swaths), rules,
             classification, calendar, filters, types, api   (all thresholds live here)
   lib/      adsb (Worker contract), classify, trajectory, rulesEngine,
-            assess, complaint, geo, aircraft, log, settings, …
+            assess, complaint, geo, aircraft, log, incidentCsv, review, settings, …
   components/  NearbyButton, FlightList/Card/Detail, MapView, FlagBadge,
-               AirportTag, KindTag, ComplaintModal, IncidentLog, Settings*
+               AirportTag, KindTag, ComplaintModal, IncidentLog,
+               Review{Modal,Map,Detail}, Settings*
 worker/
   src/index.ts   Cloudflare Worker: GET /api/nearby (+ /health), CORS
   wrangler.toml
