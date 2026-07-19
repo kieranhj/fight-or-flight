@@ -11,7 +11,18 @@
  * The front-end talks ONLY to this Worker (Build Plan §2).
  */
 
-export interface Env {
+import { USER_AGENT, fetchUpstream, isMilitary, num, str, type RawAircraft } from './shared'
+import {
+  captureMinute,
+  compactHour,
+  compactDay,
+  captureHealth,
+  previousHour,
+  previousDay,
+  type CaptureEnv,
+} from './capture'
+
+export interface Env extends CaptureEnv {
   /** Optional allow-list of front-end origins; '*' if unset. */
   ALLOWED_ORIGIN?: string
 }
@@ -27,9 +38,6 @@ const EXCLUDED_TYPE_CODES = new Set<string>([]) // e.g. add light-GA ICAO type c
 
 /** Per-request opt-ins to include normally-filtered categories (default: all off). */
 type FilterOpts = { includeMilitary: boolean; includeRotorcraft: boolean; includeLight: boolean }
-
-/** Sent on every upstream request so feed operators can identify / contact us. */
-const USER_AGENT = 'fight-or-flight (+github.com/kieranhj/fight-or-flight)'
 
 // ── Normalized output shape (mirror of src/lib/adsb.ts NormalizedFlight) ─────
 type FlightRoute = {
@@ -64,9 +72,6 @@ type NormalizedFlight = {
   route: FlightRoute | null
 }
 
-/** Loose shape of an ADSBExchange-v2 aircraft record (airplanes.live / adsb.lol). */
-type RawAircraft = Record<string, unknown>
-
 // ── CORS / response helpers ──────────────────────────────────────────────────
 function corsHeaders(env: Env): Record<string, string> {
   return {
@@ -90,22 +95,6 @@ function json(body: unknown, env: Env, status = 200, cacheSeconds = 0): Response
 }
 
 // ── Normalization ────────────────────────────────────────────────────────────
-function num(v: unknown): number | null {
-  return typeof v === 'number' && Number.isFinite(v) ? v : null
-}
-
-function str(v: unknown): string | null {
-  if (typeof v !== 'string') return null
-  const t = v.trim()
-  return t.length > 0 ? t : null
-}
-
-/** Military bit (bit 0) of the ADSBExchange `dbFlags` bitfield. */
-function isMilitary(ac: RawAircraft): boolean {
-  const flags = ac.dbFlags
-  return typeof flags === 'number' && (flags & 1) === 1
-}
-
 function isExcluded(ac: RawAircraft, opts: FilterOpts): boolean {
   if (EXCLUDE_ON_GROUND && ac.alt_baro === 'ground') return true
   if (!opts.includeMilitary && isMilitary(ac)) return true
@@ -357,47 +346,12 @@ async function enrichRoutes(flights: NormalizedFlight[], ctx: ExecutionContext):
   }
 }
 
-// ── Upstream feeds ───────────────────────────────────────────────────────────
-const UPSTREAMS = [
-  { source: 'airplanes.live', url: (la: number, lo: number, r: number) => `https://api.airplanes.live/v2/point/${la}/${lo}/${r}` },
-  { source: 'adsb.lol', url: (la: number, lo: number, r: number) => `https://api.adsb.lol/v2/point/${la}/${lo}/${r}` },
-] as const
-
-async function fetchUpstream(
-  lat: number,
-  lon: number,
-  radiusNm: number,
-): Promise<{ source: string; aircraft: RawAircraft[] }> {
-  let lastError: unknown
-  // Responsible use: ONE attempt per feed, primary→fallback, no immediate retry.
-  // We never re-hit a feed that just failed (especially a 429) — when both blip,
-  // the caller serves the 5-minute stale copy instead of generating more load.
-  // Combined with the tap-only model (no polling) and the ~8s edge cache, this
-  // keeps us comfortably within airplanes.live's ~1 req/s, non-commercial terms.
-  for (const up of UPSTREAMS) {
-    try {
-      const res = await fetch(up.url(lat, lon, radiusNm), {
-        headers: {
-          Accept: 'application/json',
-          'User-Agent': 'fight-or-flight (+github.com/kieranhj/fight-or-flight)',
-        },
-        // Let Cloudflare cache the upstream briefly too, to dedupe load.
-        cf: { cacheTtl: 8, cacheEverything: true },
-      })
-      if (!res.ok) {
-        lastError = new Error(`${up.source} HTTP ${res.status}`)
-        continue
-      }
-      const data = (await res.json()) as { ac?: RawAircraft[] }
-      return { source: up.source, aircraft: Array.isArray(data.ac) ? data.ac : [] }
-    } catch (err) {
-      lastError = err
-    }
-  }
-  throw lastError ?? new Error('all upstreams failed')
-}
-
 // ── Request handling ─────────────────────────────────────────────────────────
+// Upstream feed access lives in shared.ts (also used by the telemetry recorder).
+// Responsible use: ONE attempt per feed, primary→fallback, no immediate retry.
+// When both blip, we serve the 5-minute stale copy instead of generating load.
+// Combined with the tap-only model and the ~8s edge cache, this keeps us well
+// within airplanes.live's ~1 req/s, non-commercial terms.
 function clamp(n: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, n))
 }
@@ -438,7 +392,7 @@ async function handleNearby(url: URL, env: Env, ctx: ExecutionContext): Promise<
 
   let upstream: { source: string; aircraft: RawAircraft[] }
   try {
-    upstream = await fetchUpstream(lat, lon, radiusNm)
+    upstream = await fetchUpstream(lat, lon, radiusNm, env.UPSTREAM_BASE)
   } catch (err) {
     // Stale-on-error: return the last good data (≤ 5 min old) rather than a 502.
     const stale = await cache.match(staleKey)
@@ -541,10 +495,44 @@ export default {
       }
     }
 
+    // Telemetry recorder health: last capture + yesterday's summary.
+    if (url.pathname === '/api/history/health') {
+      return json(await captureHealth(env, Date.now()), env)
+    }
+
+    // Ops/diagnostic: run a compaction stage by hand (idempotent — safe to
+    // re-run; merges then deletes only already-merged source objects).
+    //   /api/history/compact?hour=YYYY-MM-DDTHH   minutes → hour file
+    //   /api/history/compact?day=YYYY-MM-DD       hours   → day file
+    if (url.pathname === '/api/history/compact') {
+      const hour = url.searchParams.get('hour')
+      const day = url.searchParams.get('day')
+      try {
+        if (hour) return json(await compactHour(env, hour), env)
+        if (day) return json(await compactDay(env, day), env)
+        return json({ error: 'hour=YYYY-MM-DDTHH or day=YYYY-MM-DD required' }, env, 400)
+      } catch (err) {
+        return json({ error: String(err) }, env, 500)
+      }
+    }
+
     if (url.pathname === '/' || url.pathname === '/health') {
       return json({ ok: true, service: 'aircraft-complaint-proxy', phase: 1 }, env)
     }
 
     return json({ error: 'Not found' }, env, 404)
+  },
+
+  // Telemetry recorder (docs/TELEMETRY-CAPTURE-PLAN.md): which job runs is
+  // keyed on the cron expression that fired (must match wrangler.toml).
+  async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    const t = controller.scheduledTime
+    if (controller.cron === '5 * * * *') {
+      ctx.waitUntil(compactHour(env, previousHour(t)).catch((e) => console.log(`compactHour: ${e}`)))
+    } else if (controller.cron === '15 0 * * *') {
+      ctx.waitUntil(compactDay(env, previousDay(t)).catch((e) => console.log(`compactDay: ${e}`)))
+    } else {
+      ctx.waitUntil(captureMinute(env, t).catch((e) => console.log(`capture: ${e}`)))
+    }
   },
 }

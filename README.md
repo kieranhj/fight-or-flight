@@ -65,6 +65,11 @@ phase's Definition of Done for review.
 - **Map & display.** Per-kind corridor overlay toggles (departure / arrival), an
   optional "re-centre on refresh" toggle, and very-low unknown-category aircraft drawn
   as light rather than full-size.
+- **Continuous telemetry recorder (H1).** The Worker's cron triggers record every
+  aircraft within 25 nm of home to R2 (15 s cadence, gzipped NDJSON, minute→hour→day
+  compaction) for later analysis: Farnborough movement stats vs permits, day replay,
+  offender tagging. See [`docs/TELEMETRY-CAPTURE-PLAN.md`](./docs/TELEMETRY-CAPTURE-PLAN.md)
+  and [`docs/PHASE-H1-NOTES.md`](./docs/PHASE-H1-NOTES.md).
 - **Incident-log review.** Import an incident-log CSV (or review your own saved log),
   scroll the list or view it on the map, and tap any entry to re-run the classifier and
   rules **at the logged time** — double-checking what the heuristics decided (owning
@@ -107,8 +112,10 @@ src/
                AirportTag, KindTag, ComplaintModal, IncidentLog,
                Review{Modal,Map,Detail}, Settings*
 worker/
-  src/index.ts   Cloudflare Worker: GET /api/nearby (+ /health), CORS
-  wrangler.toml
+  src/index.ts   Cloudflare Worker: GET /api/nearby (+ /health, /api/history/*), CORS
+  src/capture.ts telemetry recorder (cron: capture → R2, compaction)
+  src/shared.ts  upstream feed access shared by proxy + recorder
+  wrangler.toml  cron triggers + R2 binding
 docs/        BUILD-PLAN, PHASE-*-NOTES, DATA-RESEARCH, CORRIDOR-DATA-EXTRACTION,
              ASCENT-DESCENT-HEURISTIC, data/ (captured WebTrak swaths)
 public/spike.html  Phase 0 in-browser CORS spike

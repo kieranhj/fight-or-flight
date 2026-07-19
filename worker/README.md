@@ -6,12 +6,25 @@ and keeps room for server-side route enrichment and future API keys.
 
 ## Endpoints
 
-| Method | Path | Phase 0 behaviour |
+| Method | Path | Behaviour |
 |---|---|---|
 | `GET` | `/api/nearby?lat&lon&radius&n` | Nearest aircraft: normalize → filter → sort → trim → route-enrich. CORS. |
 | `GET` | `/api/route?callsign=BAW117` | Diagnostic: the origin/destination we resolve for a callsign. |
+| `GET` | `/api/history/health` | Telemetry recorder status: last capture + yesterday's summary. |
+| `GET` | `/api/history/compact?hour=…\|day=…` | Run a compaction stage by hand (idempotent; ops/backfill). |
 | `GET` | `/health` | Liveness JSON. |
 | `OPTIONS` | `*` | CORS preflight (204). |
+
+## Telemetry recorder
+
+`src/capture.ts` + the cron triggers in `wrangler.toml` continuously record all
+aircraft within 25 nm of home to the `foaf-telemetry` R2 bucket (15 s cadence,
+gzipped NDJSON, minute→hour→day compaction). Requires the Workers Paid plan and
+the bucket to exist before deploying — see
+[`docs/PHASE-H1-NOTES.md`](../docs/PHASE-H1-NOTES.md) for setup, layout and
+verification, and [`docs/TELEMETRY-CAPTURE-PLAN.md`](../docs/TELEMETRY-CAPTURE-PLAN.md)
+for the full architecture. Set `UPSTREAM_BASE` (e.g. via `--var` in dev) to point
+feed access at a stub server for offline testing.
 
 Routes are looked up per-callsign from a route database (`ROUTE_PROVIDER`, default
 **hexdb.io**) and cached at the edge — positive hits for ~6 h, "unknown callsign"

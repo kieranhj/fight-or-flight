@@ -49,12 +49,17 @@ numbers against permits as "at least N".
 │  Worker (existing, + scheduled handlers)                                      │
 │  ├── cron "* * * * *"  → capture: poll upstream 4× (every 15 s), trim,        │
 │  │                        filter, write 1 gzipped NDJSON object → R2          │
-│  ├── cron nightly      → compact yesterday's 1,440 minute-objects into one    │
-│  │                        day file; sessionize into flights; write D1 rows;   │
-│  │                        run rules per flight; write flags + daily stats     │
+│  ├── cron hourly       → compact previous hour's ≤60 minute-objects into an   │
+│  │                        hour file (two-stage: R2 binding calls count toward │
+│  │                        the 1,000-subrequest/invocation limit, so one pass  │
+│  │                        over 1,440 minute objects would bust it)            │
+│  ├── cron nightly      → merge previous day's 24 hour-files into a day file;  │
+│  │                        (H2) sessionize into flights; write D1 rows; run    │
+│  │                        rules per flight; write flags + daily stats         │
 │  └── fetch /api/history/* → serve stats, flight lists, day replay files       │
 │                                                                               │
-│  R2 bucket `foaf-telemetry`   raw/YYYY/MM/DD.ndjson.gz  (+ minute/ staging)   │
+│  R2 bucket `foaf-telemetry`   raw/YYYY/MM/DD.ndjson.gz                        │
+│                               (+ minute/ and hour/ staging, state/ summaries) │
 │  D1 database `foaf-history`   flights / flight_flags / daily_stats           │
 └───────────────────────────────────────────────────────────────────────────────┘
           ▲                                            ▲
@@ -83,10 +88,12 @@ module reached via the `scheduled` handler, so a capture bug can't break the liv
 **Feed courtesy:** 4 requests/min against a public limit of 1 req/s — well
 inside; single location; identifiable User-Agent.
 
-### Nightly rollup (cron ~00:10 UTC)
+### Compaction & nightly rollup
 
-1. **Compact:** stream yesterday's minute objects into one `raw/YYYY/MM/DD.ndjson.gz`
-   (~3–4 MB), delete the minute objects. (Paid tier's 30 s CPU makes this safe.)
+1. **Compact (two-stage):** hourly cron merges the previous hour's minute
+   objects into `hour/…/HH.ndjson.gz`; nightly cron (~00:15 UTC) merges the 24
+   hour files into `raw/YYYY/MM/DD.ndjson.gz` (~3–4 MB) and deletes the staging
+   objects. Both idempotent. (Paid tier's 30 s CPU makes the gzip work safe.)
 2. **Sessionize:** group records by hex; a >10 min gap splits sessions. Per
    flight: first/last seen, min/max alt, sample count, ground-at-EGLF/EGLK
    start/end → **definitive** departure/arrival + timestamps; else run the
