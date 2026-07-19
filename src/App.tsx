@@ -5,7 +5,9 @@ import MapView from './components/MapView'
 import FlightDetail from './components/FlightDetail'
 import ComplaintModal from './components/ComplaintModal'
 import IncidentLog from './components/IncidentLog'
+import ReviewModal from './components/ReviewModal'
 import SettingsModal from './components/SettingsModal'
+import type { ReviewRecord } from './lib/incidentCsv'
 import { SettingsContext } from './components/SettingsContext'
 import { fetchNearby, type NearbyResponse, type NormalizedFlight } from './lib/adsb'
 import { getCurrentPosition, type GeoResult } from './lib/geolocation'
@@ -51,6 +53,7 @@ export default function App() {
   const [complaintFor, setComplaintFor] = useState<NormalizedFlight | null>(null)
   const [showLog, setShowLog] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [review, setReview] = useState<{ records: ReviewRecord[]; title: string } | null>(null)
   const [logCount, setLogCount] = useState(() => incidentCount())
   const [trails, setTrails] = useState<Record<string, [number, number][]>>({})
   const [refreshing, setRefreshing] = useState(false)
@@ -308,6 +311,15 @@ export default function App() {
           <IncidentLog
             onClose={() => setShowLog(false)}
             onChange={() => setLogCount(incidentCount())}
+            onReview={(records, title) => setReview({ records, title })}
+          />
+        )}
+
+        {review && (
+          <ReviewModal
+            records={review.records}
+            title={review.title}
+            onClose={() => setReview(null)}
           />
         )}
 

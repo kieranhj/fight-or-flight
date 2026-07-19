@@ -18,7 +18,7 @@ const CORRIDOR_COLOUR: Record<CorridorKind, string> = {
 // Draw the real WebTrak swath polygons for the enabled kinds. The lateral
 // "Corridors" SID/STAR envelopes get a firmer outline; the broader altitude-band
 // zones a fainter wash.
-function CorridorOverlay({ show }: { show: Record<CorridorKind, boolean> }) {
+export function CorridorOverlay({ show }: { show: Record<CorridorKind, boolean> }) {
   return (
     <>
       {CORRIDORS.filter((c) => show[c.kind]).map((c) => {
@@ -53,7 +53,7 @@ const LIGHT_PATH =
 // Aircraft marker. Shape encodes kind (helicopter glyph vs plane, plane sized by
 // class); colour encodes status: selected (sky) > breach (rose) > military
 // (orange) > slate. Glyph points north and is rotated to the flight's track.
-function aircraftIcon(f: NormalizedFlight, selected: boolean, breach: boolean): L.DivIcon {
+export function aircraftIcon(f: NormalizedFlight, selected: boolean, breach: boolean): L.DivIcon {
   const kind = aircraftKind(f)
   const fill = selected
     ? '#38bdf8'
@@ -108,7 +108,13 @@ const userIcon = L.divIcon({
  * initial render); thereafter only re-frames on refresh when `recenter` is on, so
  * turning it off preserves the user's pan/zoom.
  */
-function FitBounds({ points, recenter }: { points: L.LatLngExpression[]; recenter: boolean }) {
+export function FitBounds({
+  points,
+  recenter = true,
+}: {
+  points: L.LatLngExpression[]
+  recenter?: boolean
+}) {
   const map = useMap()
   const hasFit = useRef(false)
   useEffect(() => {
