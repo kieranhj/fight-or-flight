@@ -18,6 +18,16 @@ crons = ["* * * * *", "5 * * * *", "15 0 * * *"]
 binding = "TELEMETRY"
 bucket_name = "foaf-telemetry"
 
+# History summaries (flights / flags / daily stats), written by the nightly
+# rollup. The database_id placeholder is substituted at deploy time by
+# .github/workflows/deploy-worker.yml (repo variable FOAF_HISTORY_D1_ID, or a
+# Cloudflare API lookup by name). For local dev the placeholder is fine —
+# wrangler dev simulates D1 locally.
+[[d1_databases]]
+binding = "HISTORY"
+database_name = "foaf-history"
+database_id = "__FOAF_HISTORY_D1_ID__"
+
 # Optionally lock CORS to your Pages origin once known, e.g.
 # [vars]
 # ALLOWED_ORIGIN = "https://kieranhj.github.io"

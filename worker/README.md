@@ -12,6 +12,9 @@ and keeps room for server-side route enrichment and future API keys.
 | `GET` | `/api/route?callsign=BAW117` | Diagnostic: the origin/destination we resolve for a callsign. |
 | `GET` | `/api/history/health` | Telemetry recorder status: last capture + yesterday's summary. |
 | `GET` | `/api/history/compact?hour=…\|day=…` | Run a compaction stage by hand (idempotent; ops/backfill). |
+| `GET` | `/api/history/rollup?day=…` | Sessionize a day's capture into D1 (idempotent; runs nightly). |
+| `GET` | `/api/history/flights?day=…` | A day's flights + rule flags (`&airport=EGLF`, `&flagged=1`). |
+| `GET` | `/api/history/stats?from=…&to=…` | Daily movement/breach stats rows. |
 | `GET` | `/health` | Liveness JSON. |
 | `OPTIONS` | `*` | CORS preflight (204). |
 

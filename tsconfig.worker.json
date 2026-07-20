@@ -13,5 +13,13 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true
   },
-  "include": ["worker/src"]
+  "include": [
+    "worker/src",
+    "src/config/types.ts",
+    "src/config/airports.ts",
+    "src/config/corridors.ts",
+    "src/config/rules.ts",
+    "src/config/calendar.ts",
+    "src/lib/geo.ts"
+  ]
 }

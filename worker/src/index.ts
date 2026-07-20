@@ -19,10 +19,10 @@ import {
   captureHealth,
   previousHour,
   previousDay,
-  type CaptureEnv,
 } from './capture'
+import { rollupDay, queryFlights, queryStats, type HistoryEnv } from './rollup'
 
-export interface Env extends CaptureEnv {
+export interface Env extends HistoryEnv {
   /** Optional allow-list of front-end origins; '*' if unset. */
   ALLOWED_ORIGIN?: string
 }
@@ -516,6 +516,44 @@ export default {
       }
     }
 
+    // Ops/backfill: sessionize one day's raw capture into D1 (idempotent —
+    // deletes and re-inserts that day's rows). Runs nightly after compaction.
+    if (url.pathname === '/api/history/rollup') {
+      const day = url.searchParams.get('day')
+      if (!day) return json({ error: 'day=YYYY-MM-DD required' }, env, 400)
+      try {
+        return json(await rollupDay(env, day), env)
+      } catch (err) {
+        return json({ error: String(err) }, env, 500)
+      }
+    }
+
+    // Flights for a day (+flags), optionally filtered.
+    //   /api/history/flights?day=YYYY-MM-DD[&airport=EGLF][&flagged=1]
+    if (url.pathname === '/api/history/flights') {
+      if (!env.HISTORY) return json({ error: 'HISTORY D1 binding not configured' }, env, 500)
+      const day = url.searchParams.get('day')
+      if (!day) return json({ error: 'day=YYYY-MM-DD required' }, env, 400)
+      return json(
+        await queryFlights(env.HISTORY, {
+          day,
+          airport: url.searchParams.get('airport'),
+          flagged: url.searchParams.get('flagged') === '1',
+        }),
+        env,
+        200,
+        60,
+      )
+    }
+
+    // Daily stats over a date range: /api/history/stats?from=…&to=…
+    if (url.pathname === '/api/history/stats') {
+      if (!env.HISTORY) return json({ error: 'HISTORY D1 binding not configured' }, env, 500)
+      const from = url.searchParams.get('from') ?? '2026-01-01'
+      const to = url.searchParams.get('to') ?? '2099-12-31'
+      return json(await queryStats(env.HISTORY, from, to), env, 200, 60)
+    }
+
     if (url.pathname === '/' || url.pathname === '/health') {
       return json({ ok: true, service: 'aircraft-complaint-proxy', phase: 1 }, env)
     }
@@ -530,7 +568,12 @@ export default {
     if (controller.cron === '5 * * * *') {
       ctx.waitUntil(compactHour(env, previousHour(t)).catch((e) => console.log(`compactHour: ${e}`)))
     } else if (controller.cron === '15 0 * * *') {
-      ctx.waitUntil(compactDay(env, previousDay(t)).catch((e) => console.log(`compactDay: ${e}`)))
+      // Compact the day, then sessionize it into D1 (H2).
+      ctx.waitUntil(
+        compactDay(env, previousDay(t))
+          .then(() => rollupDay(env, previousDay(t)))
+          .catch((e) => console.log(`compactDay/rollup: ${e}`)),
+      )
     } else {
       ctx.waitUntil(captureMinute(env, t).catch((e) => console.log(`capture: ${e}`)))
     }
