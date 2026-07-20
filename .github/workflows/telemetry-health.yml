@@ -5,6 +5,11 @@ name: Telemetry Health
 
 on:
   workflow_dispatch:
+    inputs:
+      path:
+        description: 'Worker path to fetch (history endpoints only)'
+        required: false
+        default: '/api/history/health'
   # Also runs when this file itself changes in a PR — which both smoke-tests the
   # workflow and lets an agent trigger a health check before it lands on main.
   pull_request:
@@ -15,8 +20,14 @@ jobs:
   health:
     runs-on: ubuntu-latest
     steps:
-      - name: Fetch /api/history/health
+      - name: Fetch from the Worker
+        env:
+          REQ_PATH: ${{ inputs.path || '/api/history/health' }}
         run: |
-          curl -sS --max-time 30 \
-            https://aircraft-complaint-proxy.kieranhj.workers.dev/api/history/health \
+          case "$REQ_PATH" in
+            /api/history/*) ;;
+            *) echo "::error::path must start with /api/history/"; exit 1 ;;
+          esac
+          curl -sS --max-time 120 \
+            "https://aircraft-complaint-proxy.kieranhj.workers.dev$REQ_PATH" \
             | python3 -m json.tool

@@ -6,6 +6,7 @@ import FlightDetail from './components/FlightDetail'
 import ComplaintModal from './components/ComplaintModal'
 import IncidentLog from './components/IncidentLog'
 import ReviewModal from './components/ReviewModal'
+import HistoryModal from './components/HistoryModal'
 import SettingsModal from './components/SettingsModal'
 import type { ReviewRecord } from './lib/incidentCsv'
 import { SettingsContext } from './components/SettingsContext'
@@ -52,6 +53,7 @@ export default function App() {
   const [selected, setSelected] = useState<NormalizedFlight | null>(null)
   const [complaintFor, setComplaintFor] = useState<NormalizedFlight | null>(null)
   const [showLog, setShowLog] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [review, setReview] = useState<{ records: ReviewRecord[]; title: string } | null>(null)
   const [logCount, setLogCount] = useState(() => incidentCount())
@@ -195,6 +197,12 @@ export default function App() {
                 Log{logCount > 0 ? ` (${logCount})` : ''}
               </button>
               <button
+                onClick={() => setShowHistory(true)}
+                className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-300"
+              >
+                History
+              </button>
+              <button
                 onClick={() => setShowSettings(true)}
                 aria-label="Settings"
                 className="rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs font-medium text-slate-300"
@@ -322,6 +330,8 @@ export default function App() {
             onClose={() => setReview(null)}
           />
         )}
+
+        {showHistory && <HistoryModal onClose={() => setShowHistory(false)} />}
 
         {showSettings && (
           <SettingsModal
