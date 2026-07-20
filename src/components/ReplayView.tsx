@@ -82,7 +82,7 @@ export default function ReplayView({ day }: { day: string }) {
   const [playhead, setPlayhead] = useState<number | null>(null)
   const [playing, setPlaying] = useState(false)
   const [speed, setSpeed] = useState<(typeof SPEEDS)[number]['mps']>(1)
-  const [selectedHex, setSelectedHex] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [groups, setGroups] = useState<ReadonlySet<ReplayGroup>>(new Set(GROUP_ORDER))
   // Route lookups for opened cards, memoized per callsign for the session.
   const routesRef = useRef(new Map<string, FlightRoute | null>())
@@ -130,7 +130,7 @@ export default function ReplayView({ day }: { day: string }) {
     () => (data && playhead != null ? positionsAt(data, playhead, groups) : []),
     [data, playhead, groups],
   )
-  const selected = selectedHex ? (positions.find((p) => p.ac.hex === selectedHex) ?? null) : null
+  const selected = selectedId ? (positions.find((p) => p.ac.id === selectedId) ?? null) : null
 
   // Fetch the selected aircraft's route (origin/destination) once per callsign.
   const selectedCallsign = selected?.ac.callsign ?? null
@@ -221,10 +221,10 @@ export default function ReplayView({ day }: { day: string }) {
           />
           {positions.map((p) => (
             <Polyline
-              key={`t-${p.ac.hex}`}
+              key={`t-${p.ac.id}`}
               positions={p.trail}
               pathOptions={{
-                color: p.ac.hex === selectedHex ? '#38bdf8' : '#64748b',
+                color: p.ac.id === selectedId ? '#38bdf8' : '#64748b',
                 weight: 1.5,
                 opacity: 0.55,
                 interactive: false,
@@ -233,14 +233,14 @@ export default function ReplayView({ day }: { day: string }) {
           ))}
           {positions.map((p) => (
             <Marker
-              key={p.ac.hex}
+              key={p.ac.id}
               position={[p.lat, p.lon]}
-              icon={aircraftIcon(toFlightish(p, homePos), p.ac.hex === selectedHex, false)}
-              zIndexOffset={p.ac.hex === selectedHex ? 1000 : 0}
+              icon={aircraftIcon(toFlightish(p, homePos), p.ac.id === selectedId, false)}
+              zIndexOffset={p.ac.id === selectedId ? 1000 : 0}
               eventHandlers={{
                 click: () => {
                   setPlaying(false)
-                  setSelectedHex(p.ac.hex)
+                  setSelectedId(p.ac.id)
                 },
               }}
             />
@@ -260,7 +260,7 @@ export default function ReplayView({ day }: { day: string }) {
           )}
           when={new Date(playhead * 1000)}
           zClass="z-[1300]"
-          onClose={() => setSelectedHex(null)}
+          onClose={() => setSelectedId(null)}
         />
       )}
 

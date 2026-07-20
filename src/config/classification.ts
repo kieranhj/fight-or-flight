@@ -34,6 +34,13 @@ export const CLASSIFY_THRESHOLDS = {
    */
   terminalNearFieldNm: 2,
   terminalProfileFtPerNm: 300,
+  /**
+   * Proximity-match arrival/departure wording: a vertical rate at/beyond this
+   * (fpm) decides the phase (descending ⇒ arrival, climbing ⇒ departure);
+   * below it, fall back to heading-vs-bearing. Rate beats heading because
+   * holds/vectoring legitimately point arrivals away from the field.
+   */
+  phaseVerticalRateFpm: 300,
 }
 
 type SizeCat = 'A1' | 'A2' | 'A3' | 'A4' | 'A5' | 'A6'
