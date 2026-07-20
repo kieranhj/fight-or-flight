@@ -299,6 +299,49 @@ export function previousDay(ms: number): string {
   return `${y}-${m}-${d}`
 }
 
+// ── Day track file (for replay) ──────────────────────────────────────────────
+export type DayTrack = {
+  /** NDJSON text stream of the day's capture records, chronological. */
+  body: ReadableStream | string
+  /** True when served from the immutable compacted day file. */
+  compacted: boolean
+}
+
+/**
+ * The full NDJSON for one UTC day. Compacted days stream straight from the day
+ * file; days still in staging (today, or yesterday before the 00:15 merge) are
+ * merged live from their hour + minute objects (≤24 + ≤60 reads — well inside
+ * the subrequest limit). Returns null when nothing exists for the day.
+ */
+export async function dayTrack(env: CaptureEnv, day: string): Promise<DayTrack | null> {
+  const bucket = env.TELEMETRY
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day)
+  if (!bucket || !m) throw new Error(!bucket ? 'TELEMETRY binding missing' : `bad day: ${day}`)
+  const [, y, mo, d] = m
+
+  const compacted = await bucket.get(`raw/${y}/${mo}/${d}.ndjson.gz`)
+  if (compacted) {
+    return { body: compacted.body.pipeThrough(new DecompressionStream('gzip')), compacted: true }
+  }
+
+  // Staging: hour files first, then the current hour's minute objects (both key
+  // orders sort chronologically).
+  const keys = [
+    ...(await listKeys(bucket, `hour/${y}/${mo}/${d}/`)),
+    ...(await listKeys(bucket, `minute/${y}/${mo}/${d}/`)),
+  ]
+  if (keys.length === 0) return null
+  const parts: string[] = []
+  for (const key of keys) {
+    const obj = await bucket.get(key)
+    if (!obj) continue
+    let text = await gunzipToText(obj.body)
+    if (!text.endsWith('\n')) text += '\n'
+    parts.push(text)
+  }
+  return { body: parts.join(''), compacted: false }
+}
+
 // ── Health ───────────────────────────────────────────────────────────────────
 export async function captureHealth(env: CaptureEnv, now: number): Promise<unknown> {
   if (!env.TELEMETRY) {
