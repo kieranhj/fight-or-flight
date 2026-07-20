@@ -9,7 +9,7 @@ import {
   type ReplayGroup,
   type ReplayPosition,
 } from '../lib/replay'
-import type { NormalizedFlight } from '../lib/adsb'
+import { fetchRoute, type FlightRoute, type NormalizedFlight } from '../lib/adsb'
 import { aircraftIcon, CorridorOverlay } from './MapView'
 import FlightDetail from './FlightDetail'
 import { useSettings } from './SettingsContext'
@@ -45,7 +45,11 @@ const GROUP_ORDER: ReplayGroup[] = ['EGLF', 'EGLK', 'EGLL', 'EGKK', 'low', 'tran
 
 /** Adapt a replay position to a NormalizedFlight (icons + the full flight card).
  * Distance/bearing are from home — the replay's fixed vantage point. */
-function toFlightish(p: ReplayPosition, home: { lat: number; lon: number }): NormalizedFlight {
+function toFlightish(
+  p: ReplayPosition,
+  home: { lat: number; lon: number },
+  route: FlightRoute | null = null,
+): NormalizedFlight {
   const pos = { lat: p.lat, lon: p.lon }
   return {
     hex: p.ac.hex,
@@ -66,7 +70,7 @@ function toFlightish(p: ReplayPosition, home: { lat: number; lon: number }): Nor
     bearingDeg: Math.round(bearingDeg(home, pos)),
     onGround: p.onGround,
     military: p.ac.military,
-    route: null,
+    route,
   }
 }
 
@@ -80,6 +84,9 @@ export default function ReplayView({ day }: { day: string }) {
   const [speed, setSpeed] = useState<(typeof SPEEDS)[number]['mps']>(1)
   const [selectedHex, setSelectedHex] = useState<string | null>(null)
   const [groups, setGroups] = useState<ReadonlySet<ReplayGroup>>(new Set(GROUP_ORDER))
+  // Route lookups for opened cards, memoized per callsign for the session.
+  const routesRef = useRef(new Map<string, FlightRoute | null>())
+  const [routeTick, setRouteTick] = useState(0)
 
   useEffect(() => {
     let stale = false
@@ -124,6 +131,26 @@ export default function ReplayView({ day }: { day: string }) {
     [data, playhead, groups],
   )
   const selected = selectedHex ? (positions.find((p) => p.ac.hex === selectedHex) ?? null) : null
+
+  // Fetch the selected aircraft's route (origin/destination) once per callsign.
+  const selectedCallsign = selected?.ac.callsign ?? null
+  useEffect(() => {
+    if (!selectedCallsign || routesRef.current.has(selectedCallsign)) return
+    let stale = false
+    fetchRoute(selectedCallsign)
+      .then((route) => {
+        if (stale) return
+        routesRef.current.set(selectedCallsign, route)
+        setRouteTick((n) => n + 1)
+      })
+      .catch(() => {
+        /* card just shows no route */
+      })
+    return () => {
+      stale = true
+    }
+  }, [selectedCallsign])
+  void routeTick // re-render trigger for the card below
 
   function toggleGroup(g: ReplayGroup) {
     setGroups((prev) => {
@@ -226,7 +253,11 @@ export default function ReplayView({ day }: { day: string }) {
 
       {selected && playhead != null && (
         <FlightDetail
-          flight={toFlightish(selected, homePos)}
+          flight={toFlightish(
+            selected,
+            homePos,
+            selected.ac.callsign ? (routesRef.current.get(selected.ac.callsign) ?? null) : null,
+          )}
           when={new Date(playhead * 1000)}
           zClass="z-[1300]"
           onClose={() => setSelectedHex(null)}

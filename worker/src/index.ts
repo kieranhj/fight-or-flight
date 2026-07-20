@@ -450,6 +450,16 @@ export default {
       return handleNearby(url, env, ctx)
     }
 
+    // Production route lookup: GET /api/route-lookup?callsign=X → the same
+    // cached per-callsign route resolution /api/nearby uses (edge cache + 429
+    // backoff). Used by the replay flight card; cheap to call per tap.
+    if (url.pathname === '/api/route-lookup') {
+      const cs = url.searchParams.get('callsign')
+      if (!cs) return json({ error: 'callsign query param required' }, env, 400)
+      const r = await lookupRoute(cs, ctx)
+      return json({ callsign: cs.trim().toUpperCase(), route: r.route }, env, 200, r.route ? 3600 : 300)
+    }
+
     // Diagnostic: GET /api/route?callsign=BAW117 → probes ALL route providers fresh
     // (bypassing cache) and returns each one's status, parsed route and body sample,
     // so we can pick a source that works from the deployed Worker. Try a known-good

@@ -1,4 +1,4 @@
-import { NEARBY_ENDPOINT, NEARBY_DEFAULTS } from '../config/api'
+import { NEARBY_ENDPOINT, NEARBY_DEFAULTS, WORKER_BASE } from '../config/api'
 
 // Normalized flight shape returned by the Worker's /api/nearby. The Worker maps
 // raw ADSBExchange-v2 fields onto this; the front-end only ever sees this shape.
@@ -88,4 +88,14 @@ export async function fetchNearby({
     throw new Error(`Request failed (${res.status}).`)
   }
   return (await res.json()) as NearbyResponse
+}
+
+/** Look up a callsign's route via the Worker (edge-cached; null when unknown). */
+export async function fetchRoute(callsign: string): Promise<FlightRoute | null> {
+  const url = new URL(`${WORKER_BASE}/api/route-lookup`)
+  url.searchParams.set('callsign', callsign)
+  const res = await fetch(url)
+  if (!res.ok) return null
+  const data = (await res.json()) as { route: FlightRoute | null }
+  return data.route
 }
