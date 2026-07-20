@@ -193,7 +193,13 @@ type Classified = {
   landingTs: number | null
 }
 
-function endpointField(r: Rec): MovementField | null {
+/** Vertical evidence for an endpoint takeoff/landing: |vr| beyond this, or very
+ * low. A LEVEL track that drops out of coverage near a field is a dropout, not
+ * a movement — without this gate, mid-altitude transits get logged as arrivals. */
+const ENDPOINT_VR_FPM = 200
+const ENDPOINT_VERY_LOW_FT = 1500
+
+function endpointField(r: Rec, phase: 'appeared' | 'vanished'): MovementField | null {
   // Nearest field wins (EGLF/EGLK are ~3 nm apart); endpoint must be low & close.
   let best: { f: MovementField; d: number } | null = null
   for (const f of FIELDS) {
@@ -201,14 +207,18 @@ function endpointField(r: Rec): MovementField | null {
     if (d <= ENDPOINT_NEAR[f].nm && (!best || d < best.d)) best = { f, d }
   }
   if (!best) return null
-  const alt = r.ab
   if (r.g) return best.f
-  return alt != null && alt <= ENDPOINT_NEAR[best.f].altFt ? best.f : null
+  const alt = r.ab
+  if (alt == null || alt > ENDPOINT_NEAR[best.f].altFt) return null
+  const vertical =
+    alt <= ENDPOINT_VERY_LOW_FT ||
+    (r.vr != null && (phase === 'appeared' ? r.vr >= ENDPOINT_VR_FPM : r.vr <= -ENDPOINT_VR_FPM))
+  return vertical ? best.f : null
 }
 
 function classify(s: Session): Classified {
   if (s.groundOnly) {
-    const f = endpointField(s.first)
+    const f = endpointField(s.first, 'appeared')
     return { airport: f, movement: null, basis: f ? 'ground' : null, takeoffTs: null, landingTs: null }
   }
 
@@ -233,8 +243,8 @@ function classify(s: Session): Classified {
 
   // Geometry fallback: the session APPEARED or VANISHED low over a field —
   // feed coverage missed the ground segment, but the movement is clear.
-  const appeared = endpointField(s.first)
-  const vanished = endpointField(s.last)
+  const appeared = endpointField(s.first, 'appeared')
+  const vanished = endpointField(s.last, 'vanished')
   if (appeared && vanished) {
     return { airport: appeared, movement: 'local', basis: 'geometry', takeoffTs: s.firstTs, landingTs: s.lastTs }
   }

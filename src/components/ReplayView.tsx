@@ -36,10 +36,12 @@ const SPEEDS = [
 const GROUP_LABEL: Record<ReplayGroup, string> = {
   EGLF: 'Farnborough',
   EGLK: 'Blackbushe',
+  EGLL: 'Heathrow',
+  EGKK: 'Gatwick',
   low: 'Other low',
   transit: 'Transit',
 }
-const GROUP_ORDER: ReplayGroup[] = ['EGLF', 'EGLK', 'low', 'transit']
+const GROUP_ORDER: ReplayGroup[] = ['EGLF', 'EGLK', 'EGLL', 'EGKK', 'low', 'transit']
 
 /** Adapt a replay position to a NormalizedFlight (icons + the full flight card).
  * Distance/bearing are from home — the replay's fixed vantage point. */

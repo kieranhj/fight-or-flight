@@ -47,10 +47,21 @@ move on the map.
   evaluated **at the playhead time**, not now, and the complaint button hidden
   (post-hoc complaints arrive properly in H5). Tapping also pauses playback.
 - **Group filters.** Chips with per-day counts — Farnborough / Blackbushe /
-  Other low / Transit — derived per aircraft from the whole track (ground
-  contact or a low endpoint near a field → that field; otherwise ≥4,000 ft
-  throughout → overhead transit; else other low). One tap hides the LHR/LGW
-  streams that dominate a busy day.
+  Heathrow / Gatwick / Other low / Transit — derived per aircraft from the
+  whole track. Ground contact near EGLF/EGLK is decisive; otherwise a track
+  endpoint low over any of the four airports (LHR and LGW fields are inside the
+  25 nm circle, so their arrivals/departures start/end low there too) counts
+  **only with vertical evidence** — climbing out (≥ +200 fpm), descending in
+  (≤ −200 fpm), or genuinely very low (≤ 1,500 ft). A LEVEL track that drops
+  out of coverage near a field is a dropout, not a landing — this is what
+  stopped mid-altitude transits (the NJE869W case) polluting the Farnborough
+  filter. The same vertical gate was applied to the nightly rollup's geometry
+  fallback so the flights log agrees with replay (re-run
+  `/api/history/rollup?day=…` to retro-fix already-rolled days). Otherwise
+  ≥4,000 ft throughout → overhead transit; else other low.
+- **Heading interpolation.** The aircraft icon's rotation now interpolates
+  between samples along the shortest arc (350°→10° passes through north), so
+  icons turn smoothly through data gaps instead of snapping.
 
 ## Verification performed
 
