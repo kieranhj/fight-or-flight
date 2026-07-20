@@ -29,7 +29,16 @@ export type TrackSample = {
  */
 export type ReplayGroup = 'EGLF' | 'EGLK' | 'EGLL' | 'EGKK' | 'low' | 'transit'
 
+/**
+ * One flight SESSION (not a whole airframe-day): a hex's samples split on
+ * >10 min gaps, mirroring the rollup. Without the split, an airframe that
+ * arrives at an airport in the morning and departs in the afternoon has
+ * neither day-endpoint near a field (its low pass is mid-track) and every
+ * leg mis-groups into "other low".
+ */
 export type TrackAircraft = {
+  /** Session id: hex + first timestamp (map keys; hexes recur across sessions). */
+  id: string
   hex: string
   callsign: string | null
   reg: string | null
@@ -42,6 +51,8 @@ export type TrackAircraft = {
   lastTs: number
   group: ReplayGroup
 }
+
+const SESSION_GAP_S = 600
 
 export type ReplayData = {
   day: string
@@ -136,7 +147,10 @@ export async function fetchDayTrack(day: string): Promise<ReplayData> {
   }
   const text = await res.text()
 
-  const byHex = new Map<string, TrackAircraft>()
+  // Live session per hex; a >10 min gap finalizes it and starts a new one
+  // (the day file is chronological, so this is a single pass).
+  const live = new Map<string, TrackAircraft>()
+  const sessions: TrackAircraft[] = []
   let records = 0
   let minTs = Infinity
   let maxTs = -Infinity
@@ -156,9 +170,14 @@ export async function fetchDayTrack(day: string): Promise<ReplayData> {
     records++
     if (t < minTs) minTs = t
     if (t > maxTs) maxTs = t
-    let ac = byHex.get(hex)
+    let ac = live.get(hex)
+    if (ac && t - ac.lastTs > SESSION_GAP_S) {
+      sessions.push(ac)
+      ac = undefined
+    }
     if (!ac) {
       ac = {
+        id: `${hex}-${t}`,
         hex,
         callsign: null,
         reg: null,
@@ -171,7 +190,7 @@ export async function fetchDayTrack(day: string): Promise<ReplayData> {
         lastTs: t,
         group: 'low',
       }
-      byHex.set(hex, ac)
+      live.set(hex, ac)
     }
     if (typeof r.c === 'string') ac.callsign = r.c
     if (typeof r.rg === 'string') ac.reg = r.rg
@@ -194,7 +213,8 @@ export async function fetchDayTrack(day: string): Promise<ReplayData> {
   }
 
   if (records === 0) throw new Error('The day file contained no usable records.')
-  const aircraft = [...byHex.values()]
+  sessions.push(...live.values())
+  const aircraft = sessions
   const groupCounts: Record<ReplayGroup, number> = {
     EGLF: 0,
     EGLK: 0,

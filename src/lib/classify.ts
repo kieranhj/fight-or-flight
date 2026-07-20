@@ -121,8 +121,17 @@ export function classifyFlight(f: NormalizedFlight): Classification {
         CLASSIFY_THRESHOLDS.terminalProfileFtPerNm
     const onProfile = alt == null || alt >= profileFloorFt
     if (nearest && lowEnough && onProfile) {
+      // Arrival/departure wording: vertical rate is the honest signal — a
+      // descending aircraft is arriving even while a hold points it away from
+      // the field (heading-only wording called those "departures"). Heading is
+      // the fallback when the rate is small/absent.
       let phase = ''
-      if (f.track != null) {
+      const vr = f.verticalRateFpm
+      if (vr != null && vr <= -CLASSIFY_THRESHOLDS.phaseVerticalRateFpm) {
+        phase = ' descending (likely arrival)'
+      } else if (vr != null && vr >= CLASSIFY_THRESHOLDS.phaseVerticalRateFpm) {
+        phase = ' climbing (likely departure)'
+      } else if (f.track != null) {
         const toAirport = bearingDeg(pos, nearest.airport.position)
         phase =
           angularDiff(f.track, toAirport) <= CLASSIFY_THRESHOLDS.headingToleranceDeg
