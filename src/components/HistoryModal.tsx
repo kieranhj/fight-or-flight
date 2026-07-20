@@ -10,6 +10,7 @@ import {
 } from '../lib/history'
 import { FARNBOROUGH_PERMITS, RECORDING_START } from '../config/permits'
 import { AIRPORTS } from '../config/airports'
+import { fetchRoute, type FlightRoute } from '../lib/adsb'
 import { formatAltitudeFt } from '../lib/format'
 import { useSettings } from './SettingsContext'
 import FlagBadge from './FlagBadge'
@@ -298,13 +299,38 @@ function FlightRow({ f, onSelect }: { f: HistoryFlight; onSelect: (f: HistoryFli
   )
 }
 
+// Route lookups for opened sheets, memoized per callsign for the session (the
+// Worker edge-caches them too). Same source as the live map / replay card.
+const routeMemo = new Map<string, FlightRoute | null>()
+
 function FlightSheet({ f, onClose }: { f: HistoryFlight; onClose: () => void }) {
   const { units } = useSettings()
   const mv = movementText(f)
+  const [route, setRoute] = useState<FlightRoute | null>(
+    f.callsign ? (routeMemo.get(f.callsign) ?? null) : null,
+  )
+  useEffect(() => {
+    const cs = f.callsign
+    if (!cs || routeMemo.has(cs)) return
+    let stale = false
+    fetchRoute(cs)
+      .then((r) => {
+        routeMemo.set(cs, r)
+        if (!stale) setRoute(r)
+      })
+      .catch(() => {
+        /* sheet just shows no route */
+      })
+    return () => {
+      stale = true
+    }
+  }, [f.callsign])
+
   const rows: [string, string][] = [
     ['Seen', `${clock(f.first_ts)} – ${clock(f.last_ts)} UK`],
     ['Takeoff', f.takeoff_ts != null ? `${clock(f.takeoff_ts)} UK` : '—'],
     ['Landing', f.landing_ts != null ? `${clock(f.landing_ts)} UK` : '—'],
+    ['Route', route ? `${route.originLabel ?? '?'} → ${route.destinationLabel ?? '?'}` : '—'],
     [
       'Altitude',
       f.min_alt_ft != null
