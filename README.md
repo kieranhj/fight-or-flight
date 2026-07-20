@@ -80,6 +80,10 @@ phase's Definition of Done for review.
   8,900 weekend/BH — Rushmoor BC, with the pending 25/00615/REV increase noted), a
   tappable daily movements strip, and a per-day flight log with Farnborough/Flagged
   filters and full detail sheets. See [`docs/PHASE-H3-NOTES.md`](./docs/PHASE-H3-NOTES.md).
+- **Day replay (H4).** Scrub any recorded day — including today, live-merged — on the
+  map: interpolated positions at a draggable playhead, 5-minute trails, play/pause at
+  1–15 replay-minutes per second, tap an aircraft for its state at that moment. See
+  [`docs/PHASE-H4-NOTES.md`](./docs/PHASE-H4-NOTES.md).
 - **Incident-log review.** Import an incident-log CSV (or review your own saved log),
   scroll the list or view it on the map, and tap any entry to re-run the classifier and
   rules **at the logged time** — double-checking what the heuristics decided (owning

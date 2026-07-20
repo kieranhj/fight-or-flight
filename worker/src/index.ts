@@ -19,6 +19,7 @@ import {
   captureHealth,
   previousHour,
   previousDay,
+  dayTrack,
 } from './capture'
 import { rollupDay, queryFlights, queryStats, type HistoryEnv } from './rollup'
 
@@ -525,6 +526,28 @@ export default {
         return json(await rollupDay(env, day), env)
       } catch (err) {
         return json({ error: String(err) }, env, 500)
+      }
+    }
+
+    // Full NDJSON track file for one UTC day, for the replay view. Compacted
+    // days are immutable (cache hard); staging days (today) merge live.
+    //   /api/history/day/YYYY-MM-DD
+    {
+      const m = /^\/api\/history\/day\/(\d{4}-\d{2}-\d{2})$/.exec(url.pathname)
+      if (m) {
+        try {
+          const track = await dayTrack(env, m[1])
+          if (!track) return json({ error: `no capture recorded for ${m[1]}` }, env, 404)
+          return new Response(track.body, {
+            headers: {
+              'Content-Type': 'application/x-ndjson; charset=utf-8',
+              'Cache-Control': track.compacted ? 'public, max-age=604800' : 'public, max-age=60',
+              ...corsHeaders(env),
+            },
+          })
+        } catch (err) {
+          return json({ error: String(err) }, env, 500)
+        }
       }
     }
 

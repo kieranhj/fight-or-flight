@@ -13,12 +13,14 @@ import { AIRPORTS } from '../config/airports'
 import { formatAltitudeFt } from '../lib/format'
 import { useSettings } from './SettingsContext'
 import FlagBadge from './FlagBadge'
+import ReplayView from './ReplayView'
 import type { Flag } from '../lib/rulesEngine'
 
-// History tab (Phase H3): stats vs the Farnborough permit caps + a browsable
-// per-day flight log, both fed by the recorder's nightly D1 summaries.
+// History tab (Phase H3+H4): stats vs the Farnborough permit caps, a browsable
+// per-day flight log (nightly D1 summaries), and a map replay of any recorded
+// day (raw track files — including today, merged live).
 
-type Tab = 'stats' | 'flights'
+type Tab = 'stats' | 'flights' | 'replay'
 type Filter = 'all' | 'eglf' | 'flagged'
 
 const toFlag = (f: HistoryFlag): Flag => ({
@@ -220,6 +222,33 @@ function StatsView({
   )
 }
 
+// ── Shared day selector ──────────────────────────────────────────────────────
+function DaySelect({
+  value,
+  onChange,
+  options,
+}: {
+  value: string
+  onChange: (d: string) => void
+  options: { day: string; note?: string }[]
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      aria-label="Day"
+      className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-sm text-slate-200"
+    >
+      {options.map(({ day, note }) => (
+        <option key={day} value={day}>
+          {dayLabel(day)}
+          {note ? ` — ${note}` : ''}
+        </option>
+      ))}
+    </select>
+  )
+}
+
 // ── Flights tab ──────────────────────────────────────────────────────────────
 function FlightRow({ f, onSelect }: { f: HistoryFlight; onSelect: (f: HistoryFlight) => void }) {
   const { units } = useSettings()
@@ -393,18 +422,11 @@ function FlightsView({
   return (
     <div className="space-y-3">
       <div className="flex gap-2">
-        <select
+        <DaySelect
           value={day}
-          onChange={(e) => onDayChange(e.target.value)}
-          aria-label="Day"
-          className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-sm text-slate-200"
-        >
-          {days.map((d) => (
-            <option key={d.day} value={d.day}>
-              {dayLabel(d.day)} — {d.flights_total} flights
-            </option>
-          ))}
-        </select>
+          onChange={onDayChange}
+          options={days.map((d) => ({ day: d.day, note: `${d.flights_total} flights` }))}
+        />
         <div className="flex rounded-lg border border-slate-700 bg-slate-800/50 p-0.5 text-xs font-medium">
           {FILTERS.map(({ key, label }) => (
             <button
@@ -449,6 +471,8 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
   const [days, setDays] = useState<DailyStat[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [day, setDay] = useState<string | null>(null)
+  // Replay can show today even before its first nightly rollup (live-merged).
+  const [replayDay, setReplayDay] = useState<string>(todayUtc())
 
   useEffect(() => {
     fetchStats(RECORDING_START, todayUtc())
@@ -480,7 +504,7 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
             </button>
           </div>
           <div className="mt-3 flex rounded-lg border border-slate-700 bg-slate-800/50 p-1 text-sm font-medium">
-            {(['stats', 'flights'] as const).map((t) => (
+            {(['stats', 'flights', 'replay'] as const).map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
@@ -503,9 +527,10 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
           {!error && days == null && (
             <p className="p-3 text-center text-sm text-slate-400">Loading recorded history…</p>
           )}
-          {days != null && days.length === 0 && (
+          {days != null && days.length === 0 && tab !== 'replay' && (
             <p className="rounded-lg border border-slate-700 bg-slate-800/40 p-4 text-center text-sm text-slate-400">
               No summaries yet — the recorder's first nightly rollup lands just after midnight UTC.
+              Today's flying is already watchable in the Replay tab.
             </p>
           )}
           {days != null && days.length > 0 && tab === 'stats' && (
@@ -519,6 +544,19 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
           )}
           {days != null && days.length > 0 && tab === 'flights' && day && (
             <FlightsView days={days} day={day} onDayChange={setDay} />
+          )}
+          {days != null && tab === 'replay' && (
+            <div className="space-y-3">
+              <DaySelect
+                value={replayDay}
+                onChange={setReplayDay}
+                options={[
+                  ...(days.some((d) => d.day === todayUtc()) ? [] : [{ day: todayUtc(), note: 'so far' }]),
+                  ...days.map((d) => ({ day: d.day })),
+                ]}
+              />
+              <ReplayView key={replayDay} day={replayDay} />
+            </div>
           )}
         </div>
       </div>
