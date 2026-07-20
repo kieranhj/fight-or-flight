@@ -2,11 +2,18 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { MapContainer, TileLayer, Marker, Polyline, CircleMarker } from 'react-leaflet'
 import type { LatLngExpression } from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { fetchDayTrack, positionsAt, type ReplayData, type ReplayPosition } from '../lib/replay'
+import {
+  fetchDayTrack,
+  positionsAt,
+  type ReplayData,
+  type ReplayGroup,
+  type ReplayPosition,
+} from '../lib/replay'
 import type { NormalizedFlight } from '../lib/adsb'
 import { aircraftIcon, CorridorOverlay } from './MapView'
+import FlightDetail from './FlightDetail'
 import { useSettings } from './SettingsContext'
-import { formatAltitudeFt, formatSpeed } from '../lib/format'
+import { haversineNm, bearingDeg } from '../lib/geo'
 
 // Day replay (Phase H4): scrub through a recorded day, animating every captured
 // aircraft on the map with short trails. All times UK.
@@ -18,11 +25,26 @@ const UK_TIME = new Intl.DateTimeFormat('en-GB', {
   hour12: false,
 })
 
-/** Replay-minutes advanced per real second while playing. */
-const SPEEDS = [1, 5, 15] as const
+/** Playback speeds: replay-minutes advanced per real second. Anything faster is
+ * better served by scrubbing the slider. */
+const SPEEDS = [
+  { label: '10s/s', mps: 1 / 6 },
+  { label: '30s/s', mps: 0.5 },
+  { label: '1m/s', mps: 1 },
+] as const
 
-/** Adapt a replay position to the shape aircraftIcon() expects. */
-function toFlightish(p: ReplayPosition): NormalizedFlight {
+const GROUP_LABEL: Record<ReplayGroup, string> = {
+  EGLF: 'Farnborough',
+  EGLK: 'Blackbushe',
+  low: 'Other low',
+  transit: 'Transit',
+}
+const GROUP_ORDER: ReplayGroup[] = ['EGLF', 'EGLK', 'low', 'transit']
+
+/** Adapt a replay position to a NormalizedFlight (icons + the full flight card).
+ * Distance/bearing are from home — the replay's fixed vantage point. */
+function toFlightish(p: ReplayPosition, home: { lat: number; lon: number }): NormalizedFlight {
+  const pos = { lat: p.lat, lon: p.lon }
   return {
     hex: p.ac.hex,
     callsign: p.ac.callsign,
@@ -33,13 +55,13 @@ function toFlightish(p: ReplayPosition): NormalizedFlight {
     altGeomFt: null,
     groundSpeedKt: p.groundSpeedKt,
     track: p.track,
-    verticalRateFpm: null,
-    navAltitudeFt: null,
+    verticalRateFpm: p.verticalRateFpm,
+    navAltitudeFt: p.navAltitudeFt,
     lat: p.lat,
     lon: p.lon,
-    squawk: null,
-    distanceNm: null,
-    bearingDeg: null,
+    squawk: p.ac.squawk,
+    distanceNm: Math.round(haversineNm(pos, home) * 10) / 10,
+    bearingDeg: Math.round(bearingDeg(home, pos)),
     onGround: p.onGround,
     military: p.ac.military,
     route: null,
@@ -53,8 +75,9 @@ export default function ReplayView({ day }: { day: string }) {
   const [error, setError] = useState<string | null>(null)
   const [playhead, setPlayhead] = useState<number | null>(null)
   const [playing, setPlaying] = useState(false)
-  const [speed, setSpeed] = useState<(typeof SPEEDS)[number]>(5)
+  const [speed, setSpeed] = useState<(typeof SPEEDS)[number]['mps']>(1)
   const [selectedHex, setSelectedHex] = useState<string | null>(null)
+  const [groups, setGroups] = useState<ReadonlySet<ReplayGroup>>(new Set(GROUP_ORDER))
 
   useEffect(() => {
     let stale = false
@@ -95,10 +118,19 @@ export default function ReplayView({ day }: { day: string }) {
   }, [playing, speed, data])
 
   const positions = useMemo(
-    () => (data && playhead != null ? positionsAt(data, playhead) : []),
-    [data, playhead],
+    () => (data && playhead != null ? positionsAt(data, playhead, groups) : []),
+    [data, playhead, groups],
   )
   const selected = selectedHex ? (positions.find((p) => p.ac.hex === selectedHex) ?? null) : null
+
+  function toggleGroup(g: ReplayGroup) {
+    setGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(g)) next.delete(g)
+      else next.add(g)
+      return next
+    })
+  }
 
   if (error) {
     return (
@@ -116,8 +148,30 @@ export default function ReplayView({ day }: { day: string }) {
   }
 
   const home: LatLngExpression = [settings.homeLat, settings.homeLon]
+  const homePos = { lat: settings.homeLat, lon: settings.homeLon }
   return (
     <div className="space-y-2.5">
+      {/* Group filters — counts are aircraft over the whole day. */}
+      <div className="flex flex-wrap gap-1.5">
+        {GROUP_ORDER.map((g) => {
+          const on = groups.has(g)
+          return (
+            <button
+              key={g}
+              onClick={() => toggleGroup(g)}
+              aria-pressed={on}
+              className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${
+                on
+                  ? 'border-sky-500/60 bg-sky-500/15 text-sky-200'
+                  : 'border-slate-700 bg-slate-800/40 text-slate-500'
+              }`}
+            >
+              {GROUP_LABEL[g]} ({data.groupCounts[g]})
+            </button>
+          )
+        })}
+      </div>
+
       <div className="relative h-[46vh] overflow-hidden rounded-xl border border-slate-700">
         <MapContainer
           center={home}
@@ -152,10 +206,13 @@ export default function ReplayView({ day }: { day: string }) {
             <Marker
               key={p.ac.hex}
               position={[p.lat, p.lon]}
-              icon={aircraftIcon(toFlightish(p), p.ac.hex === selectedHex, false)}
+              icon={aircraftIcon(toFlightish(p, homePos), p.ac.hex === selectedHex, false)}
               zIndexOffset={p.ac.hex === selectedHex ? 1000 : 0}
               eventHandlers={{
-                click: () => setSelectedHex(p.ac.hex === selectedHex ? null : p.ac.hex),
+                click: () => {
+                  setPlaying(false)
+                  setSelectedHex(p.ac.hex)
+                },
               }}
             />
           ))}
@@ -165,26 +222,13 @@ export default function ReplayView({ day }: { day: string }) {
         </div>
       </div>
 
-      {selected && (
-        <div className="flex items-center justify-between gap-2 rounded-lg border border-sky-500/40 bg-sky-500/10 px-2.5 py-1.5 text-xs text-slate-200">
-          <span className="min-w-0 truncate">
-            <span className="font-bold">
-              {selected.ac.callsign ?? selected.ac.reg ?? selected.ac.hex.toUpperCase()}
-            </span>
-            {selected.ac.type && ` · ${selected.ac.type}`}
-            {selected.onGround
-              ? ' · on ground'
-              : ` · ${formatAltitudeFt(selected.altFt, settings.units.alt)}`}
-            {selected.groundSpeedKt != null &&
-              ` · ${formatSpeed(selected.groundSpeedKt, settings.units.speed)}`}
-          </span>
-          <button
-            onClick={() => setSelectedHex(null)}
-            className="shrink-0 font-semibold text-sky-400"
-          >
-            ✕
-          </button>
-        </div>
+      {selected && playhead != null && (
+        <FlightDetail
+          flight={toFlightish(selected, homePos)}
+          when={new Date(playhead * 1000)}
+          zClass="z-[1300]"
+          onClose={() => setSelectedHex(null)}
+        />
       )}
 
       <input
@@ -212,13 +256,13 @@ export default function ReplayView({ day }: { day: string }) {
           <div className="flex rounded-lg border border-slate-700 bg-slate-800/50 p-0.5 text-xs font-medium">
             {SPEEDS.map((s) => (
               <button
-                key={s}
-                onClick={() => setSpeed(s)}
+                key={s.label}
+                onClick={() => setSpeed(s.mps)}
                 className={`rounded-md px-2 py-1 transition ${
-                  speed === s ? 'bg-slate-600 text-white' : 'text-slate-400'
+                  speed === s.mps ? 'bg-slate-600 text-white' : 'text-slate-400'
                 }`}
               >
-                {s}m/s
+                {s.label}
               </button>
             ))}
           </div>
