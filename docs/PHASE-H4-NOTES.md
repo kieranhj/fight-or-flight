@@ -37,6 +37,21 @@ move on the map.
 - Replay renders what the feeds saw — coverage gaps appear as aircraft
   popping in/out, deliberately not papered over (staleness cutoff 120 s).
 
+## Iteration (post-first-use feedback)
+
+- **Slower playback.** Speeds are now 10 s/s, 30 s/s and 1 m/s (default 1 m/s).
+  The old 5 m/s and 15 m/s were too fast to follow — scrubbing covers that.
+- **Full flight card.** Tapping an aircraft opens the live app's `FlightDetail`
+  card (kind tag, likely-airport classification, rule flags, full telemetry —
+  distance/bearing from home) — with the classification and hours flags
+  evaluated **at the playhead time**, not now, and the complaint button hidden
+  (post-hoc complaints arrive properly in H5). Tapping also pauses playback.
+- **Group filters.** Chips with per-day counts — Farnborough / Blackbushe /
+  Other low / Transit — derived per aircraft from the whole track (ground
+  contact or a low endpoint near a field → that field; otherwise ≥4,000 ft
+  throughout → overhead transit; else other low). One tap hides the LHR/LGW
+  streams that dominate a busy day.
+
 ## Verification performed
 
 Headless Chromium E2E against a stubbed day track (two synthetic aircraft, one

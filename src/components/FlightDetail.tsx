@@ -30,13 +30,20 @@ export default function FlightDetail({
   flight,
   onClose,
   onComplain,
+  when,
+  zClass = 'z-[1000]',
 }: {
   flight: NormalizedFlight
   onClose: () => void
-  onComplain: (f: NormalizedFlight) => void
+  /** Omit to hide the complaint button (e.g. historical replay views). */
+  onComplain?: (f: NormalizedFlight) => void
+  /** Evaluate rules at this moment instead of now (historical replay). */
+  when?: Date
+  /** Stacking override when shown above higher-z modals. */
+  zClass?: string
 }) {
   const vs = formatVerticalRate(flight.verticalRateFpm)
-  const { classification, flags } = assessFlight(flight)
+  const { classification, flags } = assessFlight(flight, when)
   const { units } = useSettings()
   const coords =
     flight.lat != null && flight.lon != null
@@ -45,7 +52,7 @@ export default function FlightDetail({
 
   return (
     <div
-      className="fixed inset-0 z-[1000] flex items-end justify-center bg-black/50"
+      className={`fixed inset-0 ${zClass} flex items-end justify-center bg-black/50`}
       onClick={onClose}
     >
       <div
@@ -121,12 +128,14 @@ export default function FlightDetail({
           />
         </div>
 
-        <button
-          onClick={() => onComplain(flight)}
-          className="mt-4 w-full rounded-xl bg-sky-500 px-4 py-3 text-sm font-semibold text-white active:scale-[0.99]"
-        >
-          Generate complaint
-        </button>
+        {onComplain && (
+          <button
+            onClick={() => onComplain(flight)}
+            className="mt-4 w-full rounded-xl bg-sky-500 px-4 py-3 text-sm font-semibold text-white active:scale-[0.99]"
+          >
+            Generate complaint
+          </button>
+        )}
 
         <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
           Telemetry from volunteer ADS-B feeds — indicative, and may be incomplete. Flags are a
