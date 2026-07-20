@@ -1,0 +1,17 @@
+# Manual ops check: fetch the telemetry recorder's health JSON from the deployed
+# Worker and print it in the job log. Useful when you (or an agent) can't reach
+# *.workers.dev directly. Run from the Actions tab (workflow_dispatch).
+name: Telemetry Health
+
+on:
+  workflow_dispatch:
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch /api/history/health
+        run: |
+          curl -sS --max-time 30 \
+            https://aircraft-complaint-proxy.kieranhj.workers.dev/api/history/health \
+            | python3 -m json.tool
