@@ -14,6 +14,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The D1 binding's database_id can't live in wrangler.toml (it's an
+      # account-specific UUID), so substitute it here: prefer the repo Actions
+      # variable FOAF_HISTORY_D1_ID; otherwise look it up by name via the
+      # Cloudflare API (needs the token to have D1 read access).
+      - name: Resolve D1 database id
+        env:
+          VAR_ID: ${{ vars.FOAF_HISTORY_D1_ID }}
+        run: |
+          ID="$VAR_ID"
+          if [ -z "$ID" ]; then
+            ID=$(curl -sf -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
+              "https://api.cloudflare.com/client/v4/accounts/${{ secrets.CLOUDFLARE_ACCOUNT_ID }}/d1/database?name=foaf-history&per_page=100" \
+              | jq -re '.result[] | select(.name=="foaf-history") | .uuid' | head -1) || true
+          fi
+          if [ -z "$ID" ]; then
+            echo "::error::Could not resolve the foaf-history D1 database id." \
+              "Set the repo Actions variable FOAF_HISTORY_D1_ID (dashboard -> D1 -> foaf-history -> UUID)" \
+              "or grant the API token D1 read access."
+            exit 1
+          fi
+          sed -i "s/__FOAF_HISTORY_D1_ID__/$ID/" worker/wrangler.toml
+          echo "Resolved foaf-history -> $ID"
+
       # Deploys the Cloudflare Worker with Wrangler using an API token, so you
       # never need to run `wrangler login` on a local machine. Requires two repo
       # secrets: CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID.

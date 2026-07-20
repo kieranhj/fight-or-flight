@@ -70,6 +70,12 @@ phase's Definition of Done for review.
   compaction) for later analysis: Farnborough movement stats vs permits, day replay,
   offender tagging. See [`docs/TELEMETRY-CAPTURE-PLAN.md`](./docs/TELEMETRY-CAPTURE-PLAN.md)
   and [`docs/PHASE-H1-NOTES.md`](./docs/PHASE-H1-NOTES.md).
+- **Nightly flight summaries (H2).** The nightly cron sessionizes each day's capture
+  into D1: one row per flight, EGLF/EGLK movements ground-truthed from on-ground
+  samples (geometry fallback when coverage misses the ground segment), R1/R2/R3
+  rule flags evaluated at the logged times, and daily stats — queryable via
+  `/api/history/flights` + `/api/history/stats`. See
+  [`docs/PHASE-H2-NOTES.md`](./docs/PHASE-H2-NOTES.md).
 - **Incident-log review.** Import an incident-log CSV (or review your own saved log),
   scroll the list or view it on the map, and tap any entry to re-run the classifier and
   rules **at the logged time** — double-checking what the heuristics decided (owning
