@@ -5,6 +5,11 @@ name: Telemetry Health
 
 on:
   workflow_dispatch:
+  # Also runs when this file itself changes in a PR — which both smoke-tests the
+  # workflow and lets an agent trigger a health check before it lands on main.
+  pull_request:
+    paths:
+      - '.github/workflows/telemetry-health.yml'
 
 jobs:
   health:
