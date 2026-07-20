@@ -21,11 +21,13 @@ export type TrackSample = {
 
 /**
  * Coarse per-aircraft group for the replay filters, derived from the whole
- * track (mirrors the rollup's session logic): a ground sample near EGLF/EGLK or
- * an endpoint low over one → that field; else high-throughout traffic is
- * overhead transit, the rest is other low traffic.
+ * track (mirrors the rollup's session logic): a ground sample near EGLF/EGLK,
+ * or an endpoint low over any of the four airports WITH vertical evidence
+ * (climbing out / descending in — a level track vanishing near a field is a
+ * coverage dropout, not a landing) → that airport; else high-throughout traffic
+ * is overhead transit, the rest is other low traffic.
  */
-export type ReplayGroup = 'EGLF' | 'EGLK' | 'low' | 'transit'
+export type ReplayGroup = 'EGLF' | 'EGLK' | 'EGLL' | 'EGKK' | 'low' | 'transit'
 
 export type TrackAircraft = {
   hex: string
@@ -52,35 +54,55 @@ export type ReplayData = {
 
 /** Aircraft whose whole airborne track stays at/above this are overhead transit. */
 const TRANSIT_MIN_ALT_FT = 4000
-/** Endpoint-near-field thresholds (mirrors the rollup's geometry fallback). */
+/** Endpoint-near-airport thresholds. Heathrow and Gatwick fields are inside the
+ * 25 nm capture circle, so their arrivals/departures also start/end low there. */
 const ENDPOINT_NEAR = {
   EGLF: { nm: 4, altFt: 2500 },
   EGLK: { nm: 3, altFt: 2000 },
+  EGLL: { nm: 4, altFt: 2500 },
+  EGKK: { nm: 4, altFt: 2500 },
 } as const
+type EndpointField = keyof typeof ENDPOINT_NEAR
+const ENDPOINT_FIELDS = Object.keys(ENDPOINT_NEAR) as EndpointField[]
 const GROUND_NEAR_NM = 3
+/** Vertical evidence for an endpoint takeoff/landing: |vr| beyond this, or very
+ * low. A LEVEL track vanishing near a field is a coverage dropout, not a
+ * landing — this is what keeps mid-altitude transits out of the airport groups. */
+const ENDPOINT_VR_FPM = 200
+const ENDPOINT_VERY_LOW_FT = 1500
+
+function endpointField(s: TrackSample, phase: 'appeared' | 'vanished'): EndpointField | null {
+  if (s.g || s.ab == null) return null
+  let best: { f: EndpointField; d: number } | null = null
+  for (const f of ENDPOINT_FIELDS) {
+    const d = haversineNm({ lat: s.la, lon: s.lo }, AIRPORTS[f].position)
+    if (d <= ENDPOINT_NEAR[f].nm && (!best || d < best.d)) best = { f, d }
+  }
+  if (!best || s.ab > ENDPOINT_NEAR[best.f].altFt) return null
+  const vertical =
+    s.ab <= ENDPOINT_VERY_LOW_FT ||
+    (s.vr != null && (phase === 'appeared' ? s.vr >= ENDPOINT_VR_FPM : s.vr <= -ENDPOINT_VR_FPM))
+  return vertical ? best.f : null
+}
 
 function groupFor(ac: TrackAircraft): ReplayGroup {
-  const fields = ['EGLF', 'EGLK'] as const
-  // Ground contact near a field is decisive.
+  // Ground contact near a field is decisive (the recorder only keeps ground
+  // traffic near EGLF/EGLK, so this can't fire for LHR/LGW).
   for (const s of ac.samples) {
     if (!s.g) continue
-    for (const f of fields) {
+    for (const f of ['EGLF', 'EGLK'] as const) {
       if (haversineNm({ lat: s.la, lon: s.lo }, AIRPORTS[f].position) <= GROUND_NEAR_NM) return f
     }
   }
-  // Otherwise: appeared or vanished low over a field (nearest wins).
+  // Otherwise: climbed out of / descended into an airport at a track endpoint.
+  const appeared = endpointField(ac.samples[0], 'appeared')
+  if (appeared) return appeared
+  const vanished = endpointField(ac.samples[ac.samples.length - 1], 'vanished')
+  if (vanished) return vanished
+
   let minAlt: number | null = null
   for (const s of ac.samples) {
     if (!s.g && s.ab != null && (minAlt == null || s.ab < minAlt)) minAlt = s.ab
-  }
-  for (const s of [ac.samples[0], ac.samples[ac.samples.length - 1]]) {
-    if (s.g || s.ab == null) continue
-    let best: { f: (typeof fields)[number]; d: number } | null = null
-    for (const f of fields) {
-      const d = haversineNm({ lat: s.la, lon: s.lo }, AIRPORTS[f].position)
-      if (d <= ENDPOINT_NEAR[f].nm && (!best || d < best.d)) best = { f, d }
-    }
-    if (best && s.ab <= ENDPOINT_NEAR[best.f].altFt) return best.f
   }
   return minAlt != null && minAlt >= TRANSIT_MIN_ALT_FT ? 'transit' : 'low'
 }
@@ -173,7 +195,14 @@ export async function fetchDayTrack(day: string): Promise<ReplayData> {
 
   if (records === 0) throw new Error('The day file contained no usable records.')
   const aircraft = [...byHex.values()]
-  const groupCounts: Record<ReplayGroup, number> = { EGLF: 0, EGLK: 0, low: 0, transit: 0 }
+  const groupCounts: Record<ReplayGroup, number> = {
+    EGLF: 0,
+    EGLK: 0,
+    EGLL: 0,
+    EGKK: 0,
+    low: 0,
+    transit: 0,
+  }
   for (const ac of aircraft) {
     ac.group = groupFor(ac)
     groupCounts[ac.group]++
@@ -198,6 +227,12 @@ function lastAtOrBefore(samples: TrackSample[], target: number): number {
 
 const lerp = (a: number, b: number, f: number) => a + (b - a) * f
 
+/** Interpolate a heading along the shortest arc (350° → 10° passes through 0°). */
+function lerpAngle(a: number, b: number, f: number): number {
+  const d = ((b - a + 540) % 360) - 180
+  return (a + d * f + 360) % 360
+}
+
 /** Everything airborne-or-moving at playhead `tSec`, interpolated. */
 export function positionsAt(
   data: ReplayData,
@@ -217,11 +252,14 @@ export function positionsAt(
     let lat = s.la
     let lon = s.lo
     let altFt = s.ab
+    let track = s.tr
     if (next && next.t > s.t && next.t - s.t <= LERP_MAX_GAP_S) {
       const f = (tSec - s.t) / (next.t - s.t)
       lat = lerp(s.la, next.la, f)
       lon = lerp(s.lo, next.lo, f)
       if (s.ab != null && next.ab != null) altFt = Math.round(lerp(s.ab, next.ab, f))
+      // Turn the icon smoothly too — headings wrap, so shortest-arc.
+      if (s.tr != null && next.tr != null) track = Math.round(lerpAngle(s.tr, next.tr, f))
     }
 
     const trail: [number, number][] = []
@@ -235,7 +273,7 @@ export function positionsAt(
       lat,
       lon,
       altFt,
-      track: s.tr,
+      track,
       groundSpeedKt: s.gs,
       verticalRateFpm: s.vr,
       navAltitudeFt: s.na,
