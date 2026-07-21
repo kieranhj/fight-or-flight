@@ -74,7 +74,14 @@ function toFlightish(
   }
 }
 
-export default function ReplayView({ day }: { day: string }) {
+export default function ReplayView({
+  day,
+  initialAt = null,
+}: {
+  day: string
+  /** Open with the playhead here (epoch s) — e.g. jumping from a flagged flight. */
+  initialAt?: number | null
+}) {
   const settings = useSettings()
   const { showCorridors } = settings
   const [data, setData] = useState<ReplayData | null>(null)
@@ -98,10 +105,12 @@ export default function ReplayView({ day }: { day: string }) {
       .then((d) => {
         if (stale) return
         setData(d)
-        // Default playhead: noon UTC when the day covers it, else the range end
-        // (for today that's "just now" — usually what you came to look at).
+        // Default playhead: the requested jump moment when given, else noon UTC
+        // when the day covers it, else the range end (for today: "just now").
         const noon = Math.floor(Date.parse(`${day}T12:00:00Z`) / 1000)
-        setPlayhead(noon >= d.minTs && noon <= d.maxTs ? noon : d.maxTs)
+        const want =
+          initialAt != null && initialAt >= d.minTs && initialAt <= d.maxTs ? initialAt : null
+        setPlayhead(want ?? (noon >= d.minTs && noon <= d.maxTs ? noon : d.maxTs))
       })
       .catch((e) => !stale && setError(e instanceof Error ? e.message : String(e)))
     return () => {

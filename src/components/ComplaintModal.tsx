@@ -5,20 +5,36 @@ import { buildComplaint, mailtoUrl } from '../lib/complaint'
 import { loadUserDetails, saveUserDetails, type UserDetails } from '../lib/userDetails'
 import { addIncident, incidentFromFlight } from '../lib/log'
 import type { ComplaintChannel } from '../config/types'
+import type { Flag } from '../lib/rulesEngine'
 
 export default function ComplaintModal({
   flight,
   observedAt,
   onClose,
   onLogged,
+  when,
+  flags,
+  zClass = 'z-[1100]',
 }: {
   flight: NormalizedFlight
   observedAt: number
   onClose: () => void
   onLogged?: () => void
+  /** Compose the complaint about this moment instead of now (post-hoc, H5) —
+   * rule evaluation and the letter's date/time both use it. */
+  when?: Date
+  /** Cite these logged flags verbatim instead of re-deriving them (post-hoc:
+   * the stored flags ARE the evidence, and re-derivation can differ when the
+   * reconstructed flight lacks position data). */
+  flags?: Flag[]
+  /** Stacking override when shown above higher-z modals. */
+  zClass?: string
 }) {
-  const now = useRef(new Date()).current
-  const assessment = useMemo(() => assessFlight(flight, now), [flight, now])
+  const now = useRef(when ?? new Date()).current
+  const assessment = useMemo(() => {
+    const a = assessFlight(flight, now)
+    return flags ? { ...a, flags } : a
+  }, [flight, now, flags])
 
   const [details, setDetails] = useState<UserDetails>(() => loadUserDetails())
   const [subject, setSubject] = useState('')
@@ -72,7 +88,7 @@ export default function ComplaintModal({
   const fullText = `${subject}\n\n${body}`
 
   return (
-    <div className="fixed inset-0 z-[1100] flex items-end justify-center bg-black/60" onClick={onClose}>
+    <div className={`fixed inset-0 ${zClass} flex items-end justify-center bg-black/60`} onClick={onClose}>
       <div
         className="max-h-[92vh] w-full max-w-md overflow-y-auto overscroll-contain rounded-t-2xl border-t border-slate-700 bg-slate-900 p-4 pb-8 shadow-2xl"
         onClick={(e) => e.stopPropagation()}

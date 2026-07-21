@@ -15,13 +15,14 @@ import { formatAltitudeFt } from '../lib/format'
 import { useSettings } from './SettingsContext'
 import FlagBadge from './FlagBadge'
 import ReplayView from './ReplayView'
+import OffendersView from './OffendersView'
 import type { Flag } from '../lib/rulesEngine'
 
 // History tab (Phase H3+H4): stats vs the Farnborough permit caps, a browsable
 // per-day flight log (nightly D1 summaries), and a map replay of any recorded
 // day (raw track files — including today, merged live).
 
-type Tab = 'stats' | 'flights' | 'replay'
+type Tab = 'stats' | 'flights' | 'replay' | 'offenders'
 type Filter = 'all' | 'eglf' | 'flagged'
 
 const toFlag = (f: HistoryFlag): Flag => ({
@@ -309,9 +310,19 @@ function FlightSheet({ f, onClose }: { f: HistoryFlight; onClose: () => void }) 
   const [route, setRoute] = useState<FlightRoute | null>(
     f.callsign ? (routeMemo.get(f.callsign) ?? null) : null,
   )
+  // Routes persisted at rollup time (H5) win; else look up on open.
+  const stored =
+    f.origin_icao || f.destination_icao
+      ? {
+          originIcao: f.origin_icao,
+          destinationIcao: f.destination_icao,
+          originLabel: f.origin_label ?? f.origin_icao,
+          destinationLabel: f.destination_label ?? f.destination_icao,
+        }
+      : null
   useEffect(() => {
     const cs = f.callsign
-    if (!cs || routeMemo.has(cs)) return
+    if (stored || !cs || routeMemo.has(cs)) return
     let stale = false
     fetchRoute(cs)
       .then((r) => {
@@ -324,13 +335,15 @@ function FlightSheet({ f, onClose }: { f: HistoryFlight; onClose: () => void }) 
     return () => {
       stale = true
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [f.callsign])
 
+  const shown = stored ?? route
   const rows: [string, string][] = [
     ['Seen', `${clock(f.first_ts)} – ${clock(f.last_ts)} UK`],
     ['Takeoff', f.takeoff_ts != null ? `${clock(f.takeoff_ts)} UK` : '—'],
     ['Landing', f.landing_ts != null ? `${clock(f.landing_ts)} UK` : '—'],
-    ['Route', route ? `${route.originLabel ?? '?'} → ${route.destinationLabel ?? '?'}` : '—'],
+    ['Route', shown ? `${shown.originLabel ?? '?'} → ${shown.destinationLabel ?? '?'}` : '—'],
     [
       'Altitude',
       f.min_alt_ft != null
@@ -499,6 +512,8 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
   const [day, setDay] = useState<string | null>(null)
   // Replay can show today even before its first nightly rollup (live-merged).
   const [replayDay, setReplayDay] = useState<string>(todayUtc())
+  // Set when jumping from a flagged flight: opens replay at that moment.
+  const [replayAt, setReplayAt] = useState<number | null>(null)
 
   useEffect(() => {
     fetchStats(RECORDING_START, todayUtc())
@@ -530,7 +545,7 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
             </button>
           </div>
           <div className="mt-3 flex rounded-lg border border-slate-700 bg-slate-800/50 p-1 text-sm font-medium">
-            {(['stats', 'flights', 'replay'] as const).map((t) => (
+            {(['stats', 'flights', 'replay', 'offenders'] as const).map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
@@ -575,14 +590,26 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
             <div className="space-y-3">
               <DaySelect
                 value={replayDay}
-                onChange={setReplayDay}
+                onChange={(d) => {
+                  setReplayDay(d)
+                  setReplayAt(null)
+                }}
                 options={[
                   ...(days.some((d) => d.day === todayUtc()) ? [] : [{ day: todayUtc(), note: 'so far' }]),
                   ...days.map((d) => ({ day: d.day })),
                 ]}
               />
-              <ReplayView key={replayDay} day={replayDay} />
+              <ReplayView key={`${replayDay}-${replayAt ?? ''}`} day={replayDay} initialAt={replayAt} />
             </div>
+          )}
+          {days != null && tab === 'offenders' && (
+            <OffendersView
+              onReplayJump={(d, t) => {
+                setReplayDay(d)
+                setReplayAt(t)
+                setTab('replay')
+              }}
+            />
           )}
         </div>
       </div>
