@@ -84,6 +84,12 @@ phase's Definition of Done for review.
   map: interpolated positions at a draggable playhead, 5-minute trails, play/pause at
   1–15 replay-minutes per second, tap an aircraft for its state at that moment. See
   [`docs/PHASE-H4-NOTES.md`](./docs/PHASE-H4-NOTES.md).
+- **Offenders & post-hoc complaints (H5).** Repeat offenders aggregated by airframe
+  over any window, every flagged flight with evidence and a jump into replay at the
+  flagged moment, post-hoc complaints prefilled with the logged time and stored flag
+  reasons (never auto-sent), and an evidence-grade CSV export. Routes for movements
+  and flagged flights are persisted at rollup. See
+  [`docs/PHASE-H5-NOTES.md`](./docs/PHASE-H5-NOTES.md).
 - **Incident-log review.** Import an incident-log CSV (or review your own saved log),
   scroll the list or view it on the map, and tap any entry to re-run the classifier and
   rules **at the logged time** — double-checking what the heuristics decided (owning

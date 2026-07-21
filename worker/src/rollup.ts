@@ -22,6 +22,22 @@ export interface HistoryEnv extends CaptureEnv {
   HISTORY?: D1Database
 }
 
+/** Route shape persisted per flight (subset of the proxy's FlightRoute). */
+export type RouteLite = {
+  originIcao: string | null
+  destinationIcao: string | null
+  originLabel: string | null
+  destinationLabel: string | null
+}
+
+/** Injected by index.ts (lookupRoute lives there; injection avoids an import
+ * cycle). Cached at the edge; null when the callsign is unknown. */
+export type RouteLookupFn = (callsign: string) => Promise<RouteLite | null>
+
+/** Max fresh route lookups per rollup (subrequest-budget guard; memoized per
+ * callsign so repeat callsigns are free). */
+const ROUTE_LOOKUP_CAP = 150
+
 // ── Session thresholds ───────────────────────────────────────────────────────
 const SESSION_GAP_S = 600 // >10 min without a sample = new session
 /** Geometry fallback: a session endpoint this close & low over a field counts
@@ -367,7 +383,9 @@ const SCHEMA = [
     min_dist_home_nm REAL, min_dist_eglf_nm REAL,
     airport TEXT, movement TEXT, basis TEXT,
     ground_only INTEGER NOT NULL DEFAULT 0,
-    takeoff_ts INTEGER, landing_ts INTEGER
+    takeoff_ts INTEGER, landing_ts INTEGER,
+    origin_icao TEXT, origin_label TEXT,
+    destination_icao TEXT, destination_label TEXT
   )`,
   `CREATE INDEX IF NOT EXISTS idx_flights_day ON flights(day)`,
   `CREATE INDEX IF NOT EXISTS idx_flights_hex ON flights(hex)`,
@@ -394,8 +412,24 @@ const SCHEMA = [
   )`,
 ]
 
+// Columns added after the original schema; applied idempotently to existing
+// tables ("duplicate column" errors are the already-migrated case).
+const MIGRATIONS = [
+  `ALTER TABLE flights ADD COLUMN origin_icao TEXT`,
+  `ALTER TABLE flights ADD COLUMN origin_label TEXT`,
+  `ALTER TABLE flights ADD COLUMN destination_icao TEXT`,
+  `ALTER TABLE flights ADD COLUMN destination_label TEXT`,
+]
+
 async function ensureSchema(db: D1Database): Promise<void> {
   await db.batch(SCHEMA.map((sql) => db.prepare(sql)))
+  for (const sql of MIGRATIONS) {
+    try {
+      await db.prepare(sql).run()
+    } catch {
+      /* column already exists */
+    }
+  }
 }
 
 // ── gunzip (duplicated tiny helper; capture.ts keeps its own private copy) ───
@@ -412,7 +446,11 @@ export type RollupResult = {
   stats: Record<string, number | string>
 }
 
-export async function rollupDay(env: HistoryEnv, day: string): Promise<RollupResult> {
+export async function rollupDay(
+  env: HistoryEnv,
+  day: string,
+  lookupRoute?: RouteLookupFn,
+): Promise<RollupResult> {
   const bucket = env.TELEMETRY
   const db = env.HISTORY
   if (!bucket) throw new Error('TELEMETRY binding missing')
@@ -454,8 +492,28 @@ export async function rollupDay(env: HistoryEnv, day: string): Promise<RollupRes
   // Classify + flag.
   const rows = done.map((s) => {
     const c = classify(s)
-    return { s, c, flags: sessionFlags(s, c) }
+    return { s, c, flags: sessionFlags(s, c), route: null as RouteLite | null }
   })
+
+  // Persist routes for the flights that matter (airport movements + flagged) —
+  // bounded and memoized per callsign, serialized to respect the route DB.
+  if (lookupRoute) {
+    const memo = new Map<string, RouteLite | null>()
+    let fresh = 0
+    for (const row of rows) {
+      const cs = row.s.callsign
+      if (!cs) continue
+      if (!(row.flags.length > 0 || (row.c.airport && row.c.movement))) continue
+      let r = memo.get(cs)
+      if (r === undefined) {
+        if (fresh >= ROUTE_LOOKUP_CAP) continue
+        fresh++
+        r = await lookupRoute(cs).catch(() => null)
+        memo.set(cs, r)
+      }
+      row.route = r
+    }
+  }
 
   // Stats.
   const stat = {
@@ -504,15 +562,16 @@ export async function rollupDay(env: HistoryEnv, day: string): Promise<RollupRes
   const insFlight = db.prepare(
     `INSERT INTO flights (id, day, hex, callsign, reg, type, category, military,
        first_ts, last_ts, samples, min_alt_ft, max_alt_ft, min_dist_home_nm,
-       min_dist_eglf_nm, airport, movement, basis, ground_only, takeoff_ts, landing_ts)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       min_dist_eglf_nm, airport, movement, basis, ground_only, takeoff_ts, landing_ts,
+       origin_icao, origin_label, destination_icao, destination_label)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
   )
   const insFlag = db.prepare(
     `INSERT INTO flight_flags (flight_id, rule_id, severity, reason, ts, lat, lon, alt_ft)
      VALUES (?,?,?,?,?,?,?,?)`,
   )
   let flagged = 0
-  for (const { s, c, flags } of rows) {
+  for (const { s, c, flags, route } of rows) {
     const id = `${day}-${s.hex}-${s.firstTs}`
     inserts.push(
       insFlight.bind(
@@ -521,6 +580,8 @@ export async function rollupDay(env: HistoryEnv, day: string): Promise<RollupRes
         s.minDistHomeNm != null ? Math.round(s.minDistHomeNm * 10) / 10 : null,
         s.minDistEglfNm != null ? Math.round(s.minDistEglfNm * 10) / 10 : null,
         c.airport, c.movement, c.basis, s.groundOnly ? 1 : 0, c.takeoffTs, c.landingTs,
+        route?.originIcao ?? null, route?.originLabel ?? null,
+        route?.destinationIcao ?? null, route?.destinationLabel ?? null,
       ),
     )
     if (flags.length) flagged++
@@ -579,6 +640,92 @@ export async function queryFlights(
     count: flights.results.length,
     flights: (flights.results as { id: string }[]).map((f) => ({ ...f, flags: byFlight.get(f.id) ?? [] })),
   }
+}
+
+/**
+ * Flagged flights + repeat-offender aggregates over the last `days` days.
+ * Grouped by hex (the stable airframe id — callsigns vary per flight).
+ */
+export async function queryOffenders(db: D1Database, days: number): Promise<unknown> {
+  await ensureSchema(db)
+  const from = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10)
+  const flights = await db
+    .prepare(
+      `SELECT * FROM flights
+       WHERE day >= ? AND id IN (SELECT flight_id FROM flight_flags)
+       ORDER BY first_ts DESC`,
+    )
+    .bind(from)
+    .all()
+  const flags = await db
+    .prepare(
+      `SELECT ff.* FROM flight_flags ff
+       JOIN flights f ON f.id = ff.flight_id WHERE f.day >= ?`,
+    )
+    .bind(from)
+    .all()
+  const byFlight = new Map<string, unknown[]>()
+  for (const f of flags.results as { flight_id: string }[]) {
+    const list = byFlight.get(f.flight_id) ?? []
+    list.push(f)
+    byFlight.set(f.flight_id, list)
+  }
+  type Row = {
+    id: string
+    day: string
+    hex: string
+    callsign: string | null
+    reg: string | null
+    type: string | null
+  }
+  const merged = (flights.results as Row[]).map((f) => ({ ...f, flags: byFlight.get(f.id) ?? [] }))
+
+  type Offender = {
+    hex: string
+    reg: string | null
+    type: string | null
+    callsigns: string[]
+    flaggedFlights: number
+    breaches: number
+    indicative: number
+    rules: Record<string, number>
+    firstDay: string
+    lastDay: string
+  }
+  const byHex = new Map<string, Offender>()
+  for (const f of merged) {
+    let o = byHex.get(f.hex)
+    if (!o) {
+      o = {
+        hex: f.hex,
+        reg: null,
+        type: null,
+        callsigns: [],
+        flaggedFlights: 0,
+        breaches: 0,
+        indicative: 0,
+        rules: {},
+        firstDay: f.day,
+        lastDay: f.day,
+      }
+      byHex.set(f.hex, o)
+    }
+    if (f.reg) o.reg = f.reg
+    if (f.type) o.type = f.type
+    if (f.callsign && !o.callsigns.includes(f.callsign)) o.callsigns.push(f.callsign)
+    o.flaggedFlights++
+    if (f.day < o.firstDay) o.firstDay = f.day
+    if (f.day > o.lastDay) o.lastDay = f.day
+    for (const fl of f.flags as { rule_id: string; severity: string }[]) {
+      o.rules[fl.rule_id] = (o.rules[fl.rule_id] ?? 0) + 1
+      if (fl.severity === 'breach') o.breaches++
+      else o.indicative++
+    }
+  }
+  const offenders = [...byHex.values()].sort(
+    (a, b) => b.breaches - a.breaches || b.flaggedFlights - a.flaggedFlights,
+  )
+  return { from, days, flights: merged, offenders }
 }
 
 export async function queryStats(db: D1Database, from: string, to: string): Promise<unknown> {

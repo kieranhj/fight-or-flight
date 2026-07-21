@@ -53,7 +53,25 @@ export type HistoryFlight = {
   ground_only: number
   takeoff_ts: number | null
   landing_ts: number | null
+  /** Persisted at rollup for airport movements + flagged flights (H5). */
+  origin_icao: string | null
+  origin_label: string | null
+  destination_icao: string | null
+  destination_label: string | null
   flags: HistoryFlag[]
+}
+
+export type OffenderSummary = {
+  hex: string
+  reg: string | null
+  type: string | null
+  callsigns: string[]
+  flaggedFlights: number
+  breaches: number
+  indicative: number
+  rules: Record<string, number>
+  firstDay: string
+  lastDay: string
 }
 
 /** Badge text for a rule id (D1 stores id+reason; `short` is presentation). */
@@ -88,6 +106,12 @@ export async function fetchDayFlights(
   if (opts.flagged) params.set('flagged', '1')
   const r = await get<{ flights: HistoryFlight[] }>(`/api/history/flights?${params}`)
   return r.flights
+}
+
+export async function fetchOffenders(
+  days: number,
+): Promise<{ from: string; flights: HistoryFlight[]; offenders: OffenderSummary[] }> {
+  return await get(`/api/history/offenders?days=${days}`)
 }
 
 /** Today's UTC date (the recorder's day boundary), YYYY-MM-DD. */

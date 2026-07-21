@@ -16,6 +16,7 @@ and keeps room for server-side route enrichment and future API keys.
 | `GET` | `/api/history/flights?day=…` | A day's flights + rule flags (`&airport=EGLF`, `&flagged=1`). |
 | `GET` | `/api/history/stats?from=…&to=…` | Daily movement/breach stats rows. |
 | `GET` | `/api/history/day/YYYY-MM-DD` | Full NDJSON track file for replay (today merges live from staging). |
+| `GET` | `/api/history/offenders?days=…` | Flagged flights + repeat-offender aggregates by airframe. |
 | `GET` | `/health` | Liveness JSON. |
 | `OPTIONS` | `*` | CORS preflight (204). |
 

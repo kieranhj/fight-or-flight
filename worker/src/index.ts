@@ -21,7 +21,14 @@ import {
   previousDay,
   dayTrack,
 } from './capture'
-import { rollupDay, queryFlights, queryStats, type HistoryEnv } from './rollup'
+import {
+  rollupDay,
+  queryFlights,
+  queryStats,
+  queryOffenders,
+  type HistoryEnv,
+  type RouteLookupFn,
+} from './rollup'
 
 export interface Env extends HistoryEnv {
   /** Optional allow-list of front-end origins; '*' if unset. */
@@ -347,6 +354,12 @@ async function enrichRoutes(flights: NormalizedFlight[], ctx: ExecutionContext):
   }
 }
 
+/** Route-lookup adapter injected into the rollup (avoids an import cycle —
+ * lookupRoute lives here with the proxy's caching/backoff machinery). */
+function routeLookupFn(ctx: ExecutionContext): RouteLookupFn {
+  return (cs) => lookupRoute(cs, ctx).then((r) => r.route)
+}
+
 // ── Request handling ─────────────────────────────────────────────────────────
 // Upstream feed access lives in shared.ts (also used by the telemetry recorder).
 // Responsible use: ONE attempt per feed, primary→fallback, no immediate retry.
@@ -533,10 +546,17 @@ export default {
       const day = url.searchParams.get('day')
       if (!day) return json({ error: 'day=YYYY-MM-DD required' }, env, 400)
       try {
-        return json(await rollupDay(env, day), env)
+        return json(await rollupDay(env, day, routeLookupFn(ctx)), env)
       } catch (err) {
         return json({ error: String(err) }, env, 500)
       }
+    }
+
+    // Flagged flights + repeat-offender aggregates: /api/history/offenders?days=90
+    if (url.pathname === '/api/history/offenders') {
+      if (!env.HISTORY) return json({ error: 'HISTORY D1 binding not configured' }, env, 500)
+      const days = clamp(Math.trunc(Number(url.searchParams.get('days') ?? '90') || 90), 1, 3650)
+      return json(await queryOffenders(env.HISTORY, days), env, 200, 60)
     }
 
     // Full NDJSON track file for one UTC day, for the replay view. Compacted
@@ -601,10 +621,11 @@ export default {
     if (controller.cron === '5 * * * *') {
       ctx.waitUntil(compactHour(env, previousHour(t)).catch((e) => console.log(`compactHour: ${e}`)))
     } else if (controller.cron === '15 0 * * *') {
-      // Compact the day, then sessionize it into D1 (H2).
+      // Compact the day, then sessionize it into D1 (H2), persisting routes for
+      // airport movements + flagged flights (H5).
       ctx.waitUntil(
         compactDay(env, previousDay(t))
-          .then(() => rollupDay(env, previousDay(t)))
+          .then(() => rollupDay(env, previousDay(t), routeLookupFn(ctx)))
           .catch((e) => console.log(`compactDay/rollup: ${e}`)),
       )
     } else {
