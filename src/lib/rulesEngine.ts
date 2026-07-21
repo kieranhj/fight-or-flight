@@ -89,7 +89,10 @@ const DAY_LABEL: Record<string, string> = {
 const r1Hours: Rule = {
   id: 'R1-hours',
   severity: 'breach',
-  appliesTo: (_f, ctx) => ctx.owningAirport != null,
+  // Movements only: an aircraft ON THE GROUND out of hours (parked, taxiing)
+  // isn't violating anything — the permitted-hours conditions govern takeoffs
+  // and landings. (The nightly rollup likewise only flags movement times.)
+  appliesTo: (f, ctx) => !f.onGround && ctx.owningAirport != null,
   evaluate: (_f, ctx) => {
     const airport = ctx.owningAirport!
     const clock = ukClock(ctx.now)
@@ -183,7 +186,9 @@ const EGLF_CORRIDORS = CORRIDORS.filter((c) => c.airport === 'EGLF')
 const r3Corridor: Rule = {
   id: 'R3-corridor',
   severity: 'indicative',
+  // Airborne only — an aircraft on the ground can't be "off track".
   appliesTo: (f, ctx) =>
+    !f.onGround &&
     ctx.owningAirport?.icao === 'EGLF' &&
     f.lat != null &&
     f.lon != null &&
