@@ -74,6 +74,48 @@ function toFlightish(
   }
 }
 
+/**
+ * ±1-minute step button for the scrubber: precise single taps for phone screens
+ * where the slider is too coarse, with press-and-hold auto-repeat (short delay,
+ * then ~7 replay-minutes per second).
+ */
+function StepButton({
+  dir,
+  label,
+  onStep,
+}: {
+  dir: -1 | 1
+  label: string
+  onStep: (dir: -1 | 1) => void
+}) {
+  const timers = useRef<{ delay?: ReturnType<typeof setTimeout>; repeat?: ReturnType<typeof setInterval> }>({})
+  const stop = () => {
+    clearTimeout(timers.current.delay)
+    clearInterval(timers.current.repeat)
+    timers.current = {}
+  }
+  useEffect(() => stop, [])
+  return (
+    <button
+      aria-label={label}
+      onPointerDown={(e) => {
+        e.preventDefault()
+        onStep(dir)
+        timers.current.delay = setTimeout(() => {
+          timers.current.repeat = setInterval(() => onStep(dir), 150)
+        }, 400)
+      }}
+      onPointerUp={stop}
+      onPointerLeave={stop}
+      onPointerCancel={stop}
+      onContextMenu={(e) => e.preventDefault()}
+      className="shrink-0 touch-none select-none rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-sm font-bold text-slate-200 active:bg-slate-700"
+    >
+      {dir < 0 ? '−1m' : '+1m'}
+    </button>
+  )
+}
+
 export default function ReplayView({
   day,
   initialAt = null,
@@ -292,19 +334,37 @@ export default function ReplayView({
         />
       )}
 
-      <input
-        type="range"
-        aria-label="Replay time"
-        min={data.minTs}
-        max={data.maxTs}
-        step={15}
-        value={playhead}
-        onChange={(e) => {
-          setPlaying(false)
-          setPlayhead(Number(e.target.value))
-        }}
-        className="w-full accent-sky-500"
-      />
+      <div className="flex items-center gap-2">
+        <StepButton
+          dir={-1}
+          label="Back 1 minute"
+          onStep={(d) => {
+            setPlaying(false)
+            setPlayhead((p) => Math.min(data.maxTs, Math.max(data.minTs, (p ?? data.minTs) + d * 60)))
+          }}
+        />
+        <input
+          type="range"
+          aria-label="Replay time"
+          min={data.minTs}
+          max={data.maxTs}
+          step={15}
+          value={playhead}
+          onChange={(e) => {
+            setPlaying(false)
+            setPlayhead(Number(e.target.value))
+          }}
+          className="min-w-0 flex-1 accent-sky-500"
+        />
+        <StepButton
+          dir={1}
+          label="Forward 1 minute"
+          onStep={(d) => {
+            setPlaying(false)
+            setPlayhead((p) => Math.min(data.maxTs, Math.max(data.minTs, (p ?? data.minTs) + d * 60)))
+          }}
+        />
+      </div>
 
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
