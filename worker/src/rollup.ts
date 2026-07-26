@@ -1,6 +1,7 @@
 import { AIRPORTS } from '../../src/config/airports'
 import { CORRIDORS } from '../../src/config/corridors'
 import { RULE_THRESHOLDS } from '../../src/config/rules'
+import { isRotorcraft } from '../../src/config/classification'
 import { UK_BANK_HOLIDAYS } from '../../src/config/calendar'
 import { haversineNm, pointInPolygon } from '../../src/lib/geo'
 import type { CaptureEnv } from './capture'
@@ -342,7 +343,9 @@ function sessionFlags(s: Session, c: Classified): FlagRow[] {
       if (f) flags.push(f)
     }
   }
-  if (c.airport === 'EGLF') {
+  // R2/R3 are fixed-wing rules: the WebTrak corridors/altitude bands describe
+  // jet profiles, not helicopters' own low-level routings.
+  if (c.airport === 'EGLF' && !isRotorcraft(s.category, s.type)) {
     if (s.r2) {
       flags.push({
         ruleId: 'R2-altitude',
