@@ -30,4 +30,4 @@ database_id = "__FOAF_HISTORY_D1_ID__"
 
 # Optionally lock CORS to your Pages origin once known, e.g.
 # [vars]
-# ALLOWED_ORIGIN = "https://kieranhj.github.io"
+# ALLOWED_ORIGIN = "https://<user>.github.io"

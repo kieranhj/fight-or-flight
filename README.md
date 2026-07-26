@@ -120,6 +120,11 @@ Pushing to `main` triggers `.github/workflows/deploy.yml` (GitHub Pages). Set th
 repo Actions variable `VITE_WORKER_BASE` to your deployed Worker URL so the built
 site points at it. One-time setup steps are in the Phase 0 notes.
 
+Alternatively the Worker can serve the PWA itself on a single custom domain
+(`npm run build:anon` + `worker/wrangler.anon.example.toml`) — see
+[`docs/ANONYMOUS-HOSTING.md`](./docs/ANONYMOUS-HOSTING.md) for that mode and the
+full pseudonymous-hosting cutover guide.
+
 ## Layout
 
 ```

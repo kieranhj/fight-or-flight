@@ -69,7 +69,9 @@ export async function fetchNearby({
   include,
   signal,
 }: NearbyParams): Promise<NearbyResponse> {
-  const url = new URL(NEARBY_ENDPOINT)
+  // Second arg makes relative endpoints work in same-origin mode (WORKER_BASE '')
+  // and is ignored when the endpoint is absolute.
+  const url = new URL(NEARBY_ENDPOINT, window.location.origin)
   url.searchParams.set('lat', String(lat))
   url.searchParams.set('lon', String(lon))
   url.searchParams.set('radius', String(radiusNm))
@@ -92,7 +94,7 @@ export async function fetchNearby({
 
 /** Look up a callsign's route via the Worker (edge-cached; null when unknown). */
 export async function fetchRoute(callsign: string): Promise<FlightRoute | null> {
-  const url = new URL(`${WORKER_BASE}/api/route-lookup`)
+  const url = new URL(`${WORKER_BASE}/api/route-lookup`, window.location.origin)
   url.searchParams.set('callsign', callsign)
   const res = await fetch(url)
   if (!res.ok) return null

@@ -1,7 +1,9 @@
 // Worker endpoint config. The front-end talks ONLY to the Worker (Build Plan §2).
 // Set VITE_WORKER_BASE at build time to point at your deployed Worker, e.g.
 //   VITE_WORKER_BASE=https://aircraft-complaint-proxy.<acct>.workers.dev
-// In dev it defaults to the local `wrangler dev` address.
+// or, when the Worker itself serves the PWA on one domain (wrangler.anon.toml —
+// see docs/ANONYMOUS-HOSTING.md), to the sentinel `same-origin` for relative
+// /api/* requests. In dev it defaults to the local `wrangler dev` address.
 
 // Resolve the Worker base robustly. CI injects `VITE_WORKER_BASE` even when the
 // repo variable is unset, so it can arrive as "" — `??` would NOT fall back on an
@@ -10,6 +12,7 @@
 function resolveWorkerBase(): string {
   const raw = import.meta.env.VITE_WORKER_BASE?.trim()
   if (!raw) return 'http://127.0.0.1:8787'
+  if (raw === 'same-origin' || raw === '/') return ''
   const withScheme = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`
   return withScheme.replace(/\/+$/, '')
 }

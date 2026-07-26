@@ -1,8 +1,21 @@
 // Shared between the fetch handler (index.ts) and the telemetry recorder
 // (capture.ts): upstream feed access + raw-record helpers.
 
-/** Sent on every upstream request so feed operators can identify / contact us. */
-export const USER_AGENT = 'fight-or-flight (+github.com/kieranhj/fight-or-flight)'
+// User-Agent sent on every upstream request. Deliberately carries NO account or
+// repo identity (docs/ANONYMOUS-HOSTING.md) — set the optional CONTACT var (an
+// alias email works) so feed operators can still reach whoever runs this.
+let contact: string | null = null
+
+/** Called once per invocation from the fetch/scheduled handlers with env.CONTACT. */
+export function setContact(c: string | undefined | null): void {
+  contact = c?.trim() || null
+}
+
+export function userAgent(): string {
+  return contact
+    ? `fight-or-flight-monitor/1.0 (+${contact})`
+    : 'fight-or-flight-monitor/1.0 (community aircraft noise monitor)'
+}
 
 /** Loose shape of an ADSBExchange-v2 aircraft record (airplanes.live / adsb.lol). */
 export type RawAircraft = Record<string, unknown>
@@ -46,7 +59,7 @@ export async function fetchUpstream(
   for (const up of upstreams) {
     try {
       const res = await fetch(up.url(lat, lon, radiusNm), {
-        headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
+        headers: { Accept: 'application/json', 'User-Agent': userAgent() },
         // Let Cloudflare cache the upstream briefly too, to dedupe load.
         cf: { cacheTtl: 8, cacheEverything: true },
       })

@@ -1,0 +1,55 @@
+# Anonymous single-origin deployment template — see docs/ANONYMOUS-HOSTING.md.
+#
+# The Worker serves BOTH the built PWA (static assets) and the /api/* proxy +
+# telemetry recorder on ONE custom domain, from a Cloudflare account with no
+# public link to you. No GitHub in the serving path; no *.workers.dev URL.
+#
+# Usage (from your own machine, never from CI):
+#   1. cp worker/wrangler.anon.example.toml worker/wrangler.anon.toml
+#      (the copy is .gitignored so your real domain/ids can never be committed)
+#   2. Fill in the two placeholders below.
+#   3. VITE_BASE=/ VITE_WORKER_BASE=same-origin npm run build
+#   4. npx wrangler deploy --config worker/wrangler.anon.toml
+#
+# Placeholders:
+#   __ANON_DOMAIN__   your domain (its zone must be on the same Cloudflare account)
+#   __ANON_D1_ID__    id printed by `npx wrangler d1 create foaf-history`
+
+name = "foaf"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+# Never expose the <account>.workers.dev URL — the account name is in it.
+workers_dev = false
+
+routes = [
+  { pattern = "__ANON_DOMAIN__", custom_domain = true }
+]
+
+# The Worker also serves the built front-end. Paths that match a file in dist/
+# are served directly; unknown non-API paths get index.html (SPA); /api/* and
+# /health always reach the Worker code.
+[assets]
+directory = "../dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+# Telemetry recorder — identical schedule to wrangler.toml. Requires Workers
+# Paid and the R2 bucket:  npx wrangler r2 bucket create foaf-telemetry
+[triggers]
+crons = ["* * * * *", "5 * * * *", "15 0 * * *"]
+
+[[r2_buckets]]
+binding = "TELEMETRY"
+bucket_name = "foaf-telemetry"
+
+[[d1_databases]]
+binding = "HISTORY"
+database_name = "foaf-history"
+database_id = "__ANON_D1_ID__"
+
+# Optional: an ALIAS email appended to the upstream User-Agent so the ADS-B feed
+# operators can reach you. Leave commented out for a fully generic UA. Never use
+# a personal address here — it is sent with every feed request.
+# [vars]
+# CONTACT = "youral.ias@example.org"
