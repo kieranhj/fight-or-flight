@@ -530,22 +530,36 @@ function FlightsView({
 }
 
 // ── Modal shell ──────────────────────────────────────────────────────────────
-export default function HistoryModal({ onClose }: { onClose: () => void }) {
-  const [tab, setTab] = useState<Tab>('stats')
+type JumpFrom = 'flights' | 'offenders' | 'log'
+
+export default function HistoryModal({
+  onClose,
+  initialReplay,
+  onBackToLog,
+}: {
+  onClose: () => void
+  /** Open straight onto the Replay tab at this moment (e.g. from the incident log). */
+  initialReplay?: { day: string; at: number; hex: string | null }
+  /** Back-button target when initialReplay came from the incident log. */
+  onBackToLog?: () => void
+}) {
+  const [tab, setTab] = useState<Tab>(initialReplay ? 'replay' : 'stats')
   const [days, setDays] = useState<DailyStat[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [day, setDay] = useState<string | null>(null)
   // Replay can show today even before its first nightly rollup (live-merged).
-  const [replayDay, setReplayDay] = useState<string>(todayUtc())
+  const [replayDay, setReplayDay] = useState<string>(initialReplay?.day ?? todayUtc())
   // Set when jumping from a flagged flight: opens replay at that moment with
   // the airframe highlighted.
-  const [replayAt, setReplayAt] = useState<number | null>(null)
-  const [replayFocus, setReplayFocus] = useState<string | null>(null)
+  const [replayAt, setReplayAt] = useState<number | null>(initialReplay?.at ?? null)
+  const [replayFocus, setReplayFocus] = useState<string | null>(initialReplay?.hex ?? null)
   // Where a replay jump came from (for the Back button); cleared on manual nav.
-  const [jumpFrom, setJumpFrom] = useState<'flights' | 'offenders' | null>(null)
+  const [jumpFrom, setJumpFrom] = useState<JumpFrom | null>(initialReplay ? 'log' : null)
   // Tabs stay mounted (hidden) once visited, so returning preserves their state.
-  const [visited, setVisited] = useState<ReadonlySet<Tab>>(new Set<Tab>(['stats']))
-  function goTab(t: Tab, from: 'flights' | 'offenders' | null = null) {
+  const [visited, setVisited] = useState<ReadonlySet<Tab>>(
+    new Set<Tab>(initialReplay ? ['stats', 'replay'] : ['stats']),
+  )
+  function goTab(t: Tab, from: JumpFrom | null = null) {
     setVisited((prev) => (prev.has(t) ? prev : new Set(prev).add(t)))
     setJumpFrom(from)
     setTab(t)
@@ -638,9 +652,9 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
           )}
           {days != null && visited.has('replay') && (
             <div className={tab === 'replay' ? 'space-y-3' : 'hidden'}>
-              {jumpFrom && (
+              {jumpFrom && (jumpFrom !== 'log' || onBackToLog) && (
                 <button
-                  onClick={() => goTab(jumpFrom)}
+                  onClick={() => (jumpFrom === 'log' ? onBackToLog?.() : goTab(jumpFrom))}
                   className="rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-xs font-semibold text-sky-400"
                 >
                   ← Back to {jumpFrom}

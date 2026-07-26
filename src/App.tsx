@@ -49,11 +49,13 @@ export default function App() {
   const [pos, setPos] = useState<GeoResult | null>(null)
   const [homeUsed, setHomeUsed] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [view, setView] = useState<View>('list')
+  const [view, setView] = useState<View>('map')
   const [selected, setSelected] = useState<NormalizedFlight | null>(null)
   const [complaintFor, setComplaintFor] = useState<NormalizedFlight | null>(null)
   const [showLog, setShowLog] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
+  // Set when jumping from an incident-log entry into the History replay.
+  const [historyJump, setHistoryJump] = useState<{ day: string; at: number; hex: string | null } | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [review, setReview] = useState<{ records: ReviewRecord[]; title: string } | null>(null)
   const [logCount, setLogCount] = useState(() => incidentCount())
@@ -320,6 +322,15 @@ export default function App() {
             onClose={() => setShowLog(false)}
             onChange={() => setLogCount(incidentCount())}
             onReview={(records, title) => setReview({ records, title })}
+            onReplay={(i) => {
+              setShowLog(false)
+              setHistoryJump({
+                day: new Date(i.observedAt).toISOString().slice(0, 10),
+                at: Math.floor(i.observedAt / 1000),
+                hex: i.hex,
+              })
+              setShowHistory(true)
+            }}
           />
         )}
 
@@ -331,7 +342,24 @@ export default function App() {
           />
         )}
 
-        {showHistory && <HistoryModal onClose={() => setShowHistory(false)} />}
+        {showHistory && (
+          <HistoryModal
+            onClose={() => {
+              setShowHistory(false)
+              setHistoryJump(null)
+            }}
+            initialReplay={historyJump ?? undefined}
+            onBackToLog={
+              historyJump
+                ? () => {
+                    setShowHistory(false)
+                    setHistoryJump(null)
+                    setShowLog(true)
+                  }
+                : undefined
+            }
+          />
+        )}
 
         {showSettings && (
           <SettingsModal
