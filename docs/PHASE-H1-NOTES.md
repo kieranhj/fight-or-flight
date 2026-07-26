@@ -1,7 +1,8 @@
 # Phase H1 — Telemetry recorder
 
 First phase of [`TELEMETRY-CAPTURE-PLAN.md`](./TELEMETRY-CAPTURE-PLAN.md):
-continuous capture of all aircraft within **25 nm of home** to R2, so analysis
+continuous capture of all aircraft within **25 nm of Farnborough Airport** (the
+capture centre since 2026-07-26) to R2, so analysis
 (H2+) has data to work on. **Every day the recorder isn't deployed is data lost
 forever** — the free feeds keep no history.
 

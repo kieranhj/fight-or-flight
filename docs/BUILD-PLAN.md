@@ -153,12 +153,13 @@ WebTrak corridor swaths — see [`CORRIDOR-DATA-EXTRACTION.md`](./CORRIDOR-DATA-
 - Gatwick: automated line 07700 144 827 · form viewpoint-eu.emsbk.com/lgw3.
 - Airspace/route design: CAA airspace-change consultations + your MP. Military low-flying (out of scope): MOD.
 
-**User home (GPS fallback)**
-- GU10 3RH, Dene Lane, Lower Bourne — ≈ 51.188, −0.802 · ground ~72 m (236 ft) AMSL.
+**Default location (GPS fallback)**
+- Farnborough Airport — 51.2758, −0.7763 · ground ~238 ft AMSL. Users set their own
+  home location in Settings; it is stored on-device only and never ships with the app.
 
 **Corridor / airspace seed (refine later)**
 - Runway 24 southerly departures (GWC/HAZEL SIDs): climb ahead, after ~1,150 ft turn left onto ~220°. Design target ≥ 4,000 ft over the A31 Hog's Back. Encode a rough centreline polyline now; replace with real AIP waypoints in Phase 6.
-- Controlled-airspace floor over Lower Bourne ≈ 2,000–2,500 ft AMSL (CTA-1 2,000–2,500; CTA-4 2,500–3,500) — useful context for altitude rules near home.
+- Controlled-airspace floor over the CTA south of Farnborough ≈ 2,000–2,500 ft AMSL (CTA-1 2,000–2,500; CTA-4 2,500–3,500) — useful context for altitude rules in that area.
 
 **Exclusion filters (for v1)**
 - Drop `mil` flag; drop category **A7** (rotorcraft) and **A1** (light); optionally drop type codes for known light GA. Keep A2–A5 (small jet → heavy). This removes Chinooks and hobbyist traffic.

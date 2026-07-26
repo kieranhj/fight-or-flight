@@ -1,5 +1,3 @@
-import { HOME_LOCATION } from '../config/airports'
-
 // The complainant's identity for the complaint template. Persisted locally so it's
 // entered once. Never sent anywhere except into the message the user themselves
 // delivers (mailto/copy) — we never auto-submit.
@@ -8,12 +6,10 @@ export type UserDetails = { name: string; address: string; postcode: string }
 
 const KEY = 'foaf.userDetails'
 
-// Seed address/postcode from the home location in config (Build Plan §7); name blank.
+// No prefill: nothing personal ships with the app. Users enter their own
+// details once; they live only in this device's localStorage.
 function defaults(): UserDetails {
-  const parts = HOME_LOCATION.label.split(',').map((s) => s.trim())
-  const postcode = parts[0] ?? ''
-  const address = parts.slice(1).join(', ')
-  return { name: '', address, postcode }
+  return { name: '', address: '', postcode: '' }
 }
 
 export function loadUserDetails(): UserDetails {

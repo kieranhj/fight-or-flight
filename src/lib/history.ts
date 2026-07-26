@@ -108,9 +108,17 @@ export async function fetchDayFlights(
   return r.flights
 }
 
-export async function fetchOffenders(
-  days: number,
-): Promise<{ from: string; flights: HistoryFlight[]; offenders: OffenderSummary[] }> {
+export type ExcludedPeriod = { from: string; to: string; label: string }
+
+export type OffendersResponse = {
+  from: string
+  flights: HistoryFlight[]
+  offenders: OffenderSummary[]
+  /** Query-time exclusions (e.g. airshow week) — absent from older Workers. */
+  excluded?: { periods: ExcludedPeriod[]; flights: number }
+}
+
+export async function fetchOffenders(days: number): Promise<OffendersResponse> {
   return await get(`/api/history/offenders?days=${days}`)
 }
 

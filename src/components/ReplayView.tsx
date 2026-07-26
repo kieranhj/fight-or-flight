@@ -44,7 +44,8 @@ const GROUP_LABEL: Record<ReplayGroup, string> = {
 const GROUP_ORDER: ReplayGroup[] = ['EGLF', 'EGLK', 'EGLL', 'EGKK', 'low', 'transit']
 
 /** Adapt a replay position to a NormalizedFlight (icons + the full flight card).
- * Distance/bearing are from home — the replay's fixed vantage point. */
+ * Distance/bearing are from the user's home setting (device-local; defaults to
+ * the airport) — the replay's fixed vantage point. */
 function toFlightish(
   p: ReplayPosition,
   home: { lat: number; lon: number },

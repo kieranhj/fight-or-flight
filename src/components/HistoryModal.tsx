@@ -308,7 +308,7 @@ function FlightRow({
           {f.min_alt_ft != null
             ? `${formatAltitudeFt(f.min_alt_ft, units.alt)}–${formatAltitudeFt(f.max_alt_ft, units.alt)}`
             : 'no altitude'}
-          {f.min_dist_home_nm != null && ` · closest ${f.min_dist_home_nm} nm from home`}
+          {f.min_dist_eglf_nm != null && ` · closest ${f.min_dist_eglf_nm} nm from Farnborough`}
         </span>
         <button
           onClick={(e) => {
@@ -374,7 +374,6 @@ function FlightSheet({ f, onClose }: { f: HistoryFlight; onClose: () => void }) 
         ? `${formatAltitudeFt(f.min_alt_ft, units.alt)} – ${formatAltitudeFt(f.max_alt_ft, units.alt)}`
         : '—',
     ],
-    ['Closest to home', f.min_dist_home_nm != null ? `${f.min_dist_home_nm} nm` : '—'],
     ['Closest to Farnborough', f.min_dist_eglf_nm != null ? `${f.min_dist_eglf_nm} nm` : '—'],
     ['Type / category', [f.type, f.category].filter(Boolean).join(' · ') || '—'],
     ['Hex / reg', [f.hex.toUpperCase(), f.reg].filter(Boolean).join(' · ')],

@@ -23,7 +23,7 @@ and keeps room for server-side route enrichment and future API keys.
 ## Telemetry recorder
 
 `src/capture.ts` + the cron triggers in `wrangler.toml` continuously record all
-aircraft within 25 nm of home to the `foaf-telemetry` R2 bucket (15 s cadence,
+aircraft within 25 nm of Farnborough Airport to the `foaf-telemetry` R2 bucket (15 s cadence,
 gzipped NDJSON, minute→hour→day compaction). Requires the Workers Paid plan and
 the bucket to exist before deploying — see
 [`docs/PHASE-H1-NOTES.md`](../docs/PHASE-H1-NOTES.md) for setup, layout and
@@ -48,7 +48,7 @@ distance, apply exclusion filters, cache ~8s, and fall back to `adsb.lol` on err
 ```bash
 npm install
 npm run worker:dev      # http://127.0.0.1:8787
-curl "http://127.0.0.1:8787/api/nearby?lat=51.188&lon=-0.802&radius=10&n=8"
+curl "http://127.0.0.1:8787/api/nearby?lat=51.2758&lon=-0.7763&radius=10&n=8"
 ```
 
 ## Deploy
