@@ -25,6 +25,12 @@ import type { Flag } from '../lib/rulesEngine'
 type Tab = 'stats' | 'flights' | 'replay' | 'offenders'
 type Filter = 'all' | 'eglf' | 'flagged'
 
+/** The most interesting moment of a flight (for replay jumps): the flag's
+ * evidence time, else landing/takeoff, else first seen. */
+function flightMoment(f: HistoryFlight): number {
+  return f.flags.find((fl) => fl.ts != null)?.ts ?? f.landing_ts ?? f.takeoff_ts ?? f.first_ts
+}
+
 const toFlag = (f: HistoryFlag): Flag => ({
   ruleId: f.rule_id,
   severity: f.severity,
@@ -252,7 +258,15 @@ function DaySelect({
 }
 
 // ── Flights tab ──────────────────────────────────────────────────────────────
-function FlightRow({ f, onSelect }: { f: HistoryFlight; onSelect: (f: HistoryFlight) => void }) {
+function FlightRow({
+  f,
+  onSelect,
+  onReplay,
+}: {
+  f: HistoryFlight
+  onSelect: (f: HistoryFlight) => void
+  onReplay: (f: HistoryFlight) => void
+}) {
   const { units } = useSettings()
   const mv = movementText(f)
   return (
@@ -289,12 +303,22 @@ function FlightRow({ f, onSelect }: { f: HistoryFlight; onSelect: (f: HistoryFli
           <FlagBadge key={fl.rule_id} flag={toFlag(fl)} />
         ))}
       </div>
-      <div className="mt-1.5 text-[11px] text-slate-500">
-        {f.min_alt_ft != null
-          ? `${formatAltitudeFt(f.min_alt_ft, units.alt)}–${formatAltitudeFt(f.max_alt_ft, units.alt)}`
-          : 'no altitude'}
-        {f.min_dist_home_nm != null && ` · closest ${f.min_dist_home_nm} nm from home`}
-        {` · ${f.samples} samples`}
+      <div className="mt-1.5 flex items-center justify-between gap-2 text-[11px] text-slate-500">
+        <span className="min-w-0 truncate">
+          {f.min_alt_ft != null
+            ? `${formatAltitudeFt(f.min_alt_ft, units.alt)}–${formatAltitudeFt(f.max_alt_ft, units.alt)}`
+            : 'no altitude'}
+          {f.min_dist_home_nm != null && ` · closest ${f.min_dist_home_nm} nm from home`}
+        </span>
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            onReplay(f)
+          }}
+          className="shrink-0 font-semibold text-sky-400"
+        >
+          View in replay →
+        </button>
       </div>
     </li>
   )
@@ -422,10 +446,12 @@ function FlightsView({
   days,
   day,
   onDayChange,
+  onReplayJump,
 }: {
   days: DailyStat[]
   day: string
   onDayChange: (d: string) => void
+  onReplayJump: (day: string, tSec: number) => void
 }) {
   const [filter, setFilter] = useState<Filter>('all')
   const [flights, setFlights] = useState<HistoryFlight[] | null>(null)
@@ -495,7 +521,7 @@ function FlightsView({
       )}
       <ul className="space-y-2">
         {shown.map((f) => (
-          <FlightRow key={f.id} f={f} onSelect={setSelected} />
+          <FlightRow key={f.id} f={f} onSelect={setSelected} onReplay={(fl) => onReplayJump(fl.day, flightMoment(fl))} />
         ))}
       </ul>
 
@@ -584,7 +610,16 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
             />
           )}
           {days != null && days.length > 0 && tab === 'flights' && day && (
-            <FlightsView days={days} day={day} onDayChange={setDay} />
+            <FlightsView
+              days={days}
+              day={day}
+              onDayChange={setDay}
+              onReplayJump={(d, t) => {
+                setReplayDay(d)
+                setReplayAt(t)
+                setTab('replay')
+              }}
+            />
           )}
           {days != null && tab === 'replay' && (
             <div className="space-y-3">
