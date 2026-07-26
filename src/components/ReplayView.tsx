@@ -77,10 +77,14 @@ function toFlightish(
 export default function ReplayView({
   day,
   initialAt = null,
+  focusHex = null,
 }: {
   day: string
   /** Open with the playhead here (epoch s) — e.g. jumping from a flagged flight. */
   initialAt?: number | null
+  /** Highlight this airframe (rose, like a breach) so the jumped-to flight is
+   * unmistakable among the traffic. Cleared via the banner chip. */
+  focusHex?: string | null
 }) {
   const settings = useSettings()
   const { showCorridors } = settings
@@ -90,6 +94,7 @@ export default function ReplayView({
   const [playing, setPlaying] = useState(false)
   const [speed, setSpeed] = useState<(typeof SPEEDS)[number]['mps']>(1)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [focus, setFocus] = useState<string | null>(focusHex)
   const [groups, setGroups] = useState<ReadonlySet<ReplayGroup>>(new Set(GROUP_ORDER))
   // Route lookups for opened cards, memoized per callsign for the session.
   const routesRef = useRef(new Map<string, FlightRoute | null>())
@@ -140,6 +145,7 @@ export default function ReplayView({
     [data, playhead, groups],
   )
   const selected = selectedId ? (positions.find((p) => p.ac.id === selectedId) ?? null) : null
+  const focused = focus ? (positions.find((p) => p.ac.hex === focus) ?? null) : null
 
   // Fetch the selected aircraft's route (origin/destination) once per callsign.
   const selectedCallsign = selected?.ac.callsign ?? null
@@ -233,9 +239,10 @@ export default function ReplayView({
               key={`t-${p.ac.id}`}
               positions={p.trail}
               pathOptions={{
-                color: p.ac.id === selectedId ? '#38bdf8' : '#64748b',
-                weight: 1.5,
-                opacity: 0.55,
+                color:
+                  p.ac.hex === focus ? '#fb7185' : p.ac.id === selectedId ? '#38bdf8' : '#64748b',
+                weight: p.ac.hex === focus ? 2.5 : 1.5,
+                opacity: p.ac.hex === focus ? 0.9 : 0.55,
                 interactive: false,
               }}
             />
@@ -244,8 +251,8 @@ export default function ReplayView({
             <Marker
               key={p.ac.id}
               position={[p.lat, p.lon]}
-              icon={aircraftIcon(toFlightish(p, homePos), p.ac.id === selectedId, false)}
-              zIndexOffset={p.ac.id === selectedId ? 1000 : 0}
+              icon={aircraftIcon(toFlightish(p, homePos), p.ac.id === selectedId, p.ac.hex === focus)}
+              zIndexOffset={p.ac.id === selectedId || p.ac.hex === focus ? 1000 : 0}
               eventHandlers={{
                 click: () => {
                   setPlaying(false)
@@ -258,6 +265,18 @@ export default function ReplayView({
         <div className="pointer-events-none absolute right-2 top-2 z-[1000] rounded-md bg-slate-900/80 px-2 py-1 text-xs font-semibold tabular-nums text-slate-100">
           {UK_TIME.format(new Date(playhead * 1000))} UK · {positions.length} aircraft
         </div>
+        {focus && (
+          <div className="absolute left-12 top-2 z-[1000] flex items-center gap-2 rounded-md border border-rose-500/60 bg-rose-500/20 px-2 py-1 text-xs font-semibold text-rose-100">
+            <span>
+              {focused
+                ? `Highlighting ${focused.ac.callsign ?? focused.ac.reg ?? focus.toUpperCase()}`
+                : `${focus.toUpperCase()} not visible at this time`}
+            </span>
+            <button onClick={() => setFocus(null)} aria-label="Clear highlight" className="text-rose-200">
+              ✕
+            </button>
+          </div>
+        )}
       </div>
 
       {selected && playhead != null && (
