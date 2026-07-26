@@ -542,6 +542,15 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
   // the airframe highlighted.
   const [replayAt, setReplayAt] = useState<number | null>(null)
   const [replayFocus, setReplayFocus] = useState<string | null>(null)
+  // Where a replay jump came from (for the Back button); cleared on manual nav.
+  const [jumpFrom, setJumpFrom] = useState<'flights' | 'offenders' | null>(null)
+  // Tabs stay mounted (hidden) once visited, so returning preserves their state.
+  const [visited, setVisited] = useState<ReadonlySet<Tab>>(new Set<Tab>(['stats']))
+  function goTab(t: Tab, from: 'flights' | 'offenders' | null = null) {
+    setVisited((prev) => (prev.has(t) ? prev : new Set(prev).add(t)))
+    setJumpFrom(from)
+    setTab(t)
+  }
 
   useEffect(() => {
     fetchStats(RECORDING_START, todayUtc())
@@ -576,7 +585,7 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
             {(['stats', 'flights', 'replay', 'offenders'] as const).map((t) => (
               <button
                 key={t}
-                onClick={() => setTab(t)}
+                onClick={() => goTab(t)}
                 className={`flex-1 rounded-md py-1.5 capitalize transition ${
                   tab === t ? 'bg-sky-500 text-white' : 'text-slate-400'
                 }`}
@@ -602,16 +611,19 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
               Today's flying is already watchable in the Replay tab.
             </p>
           )}
-          {days != null && days.length > 0 && tab === 'stats' && (
+          {days != null && days.length > 0 && (
+            <div className={tab === 'stats' ? '' : 'hidden'}>
             <StatsView
               days={days}
               onViewDay={(d) => {
                 setDay(d)
-                setTab('flights')
+                goTab('flights')
               }}
             />
+            </div>
           )}
-          {days != null && days.length > 0 && tab === 'flights' && day && (
+          {days != null && days.length > 0 && day && visited.has('flights') && (
+            <div className={tab === 'flights' ? '' : 'hidden'}>
             <FlightsView
               days={days}
               day={day}
@@ -620,12 +632,21 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
                 setReplayDay(d)
                 setReplayAt(t)
                 setReplayFocus(hex)
-                setTab('replay')
+                goTab('replay', 'flights')
               }}
             />
+            </div>
           )}
-          {days != null && tab === 'replay' && (
-            <div className="space-y-3">
+          {days != null && visited.has('replay') && (
+            <div className={tab === 'replay' ? 'space-y-3' : 'hidden'}>
+              {jumpFrom && (
+                <button
+                  onClick={() => goTab(jumpFrom)}
+                  className="rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-xs font-semibold text-sky-400"
+                >
+                  ← Back to {jumpFrom}
+                </button>
+              )}
               <DaySelect
                 value={replayDay}
                 onChange={(d) => {
@@ -646,15 +667,17 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
               />
             </div>
           )}
-          {days != null && tab === 'offenders' && (
+          {days != null && visited.has('offenders') && (
+            <div className={tab === 'offenders' ? '' : 'hidden'}>
             <OffendersView
               onReplayJump={(d, t, hex) => {
                 setReplayDay(d)
                 setReplayAt(t)
                 setReplayFocus(hex)
-                setTab('replay')
+                goTab('replay', 'offenders')
               }}
             />
+            </div>
           )}
         </div>
       </div>
