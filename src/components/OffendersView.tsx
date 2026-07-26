@@ -239,7 +239,7 @@ function OffenderCard({
 export default function OffendersView({
   onReplayJump,
 }: {
-  onReplayJump: (day: string, tSec: number) => void
+  onReplayJump: (day: string, tSec: number, hex: string) => void
 }) {
   const [days, setDays] = useState<number>(90)
   const [data, setData] = useState<{ flights: HistoryFlight[]; offenders: OffenderSummary[] } | null>(null)
@@ -258,7 +258,7 @@ export default function OffendersView({
     }
   }, [days])
 
-  const onReplay = (f: HistoryFlight) => onReplayJump(f.day, flagMoment(f))
+  const onReplay = (f: HistoryFlight) => onReplayJump(f.day, flagMoment(f), f.hex)
 
   return (
     <div className="space-y-3">

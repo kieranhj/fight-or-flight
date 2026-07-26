@@ -451,7 +451,7 @@ function FlightsView({
   days: DailyStat[]
   day: string
   onDayChange: (d: string) => void
-  onReplayJump: (day: string, tSec: number) => void
+  onReplayJump: (day: string, tSec: number, hex: string) => void
 }) {
   const [filter, setFilter] = useState<Filter>('all')
   const [flights, setFlights] = useState<HistoryFlight[] | null>(null)
@@ -521,7 +521,7 @@ function FlightsView({
       )}
       <ul className="space-y-2">
         {shown.map((f) => (
-          <FlightRow key={f.id} f={f} onSelect={setSelected} onReplay={(fl) => onReplayJump(fl.day, flightMoment(fl))} />
+          <FlightRow key={f.id} f={f} onSelect={setSelected} onReplay={(fl) => onReplayJump(fl.day, flightMoment(fl), fl.hex)} />
         ))}
       </ul>
 
@@ -538,8 +538,10 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
   const [day, setDay] = useState<string | null>(null)
   // Replay can show today even before its first nightly rollup (live-merged).
   const [replayDay, setReplayDay] = useState<string>(todayUtc())
-  // Set when jumping from a flagged flight: opens replay at that moment.
+  // Set when jumping from a flagged flight: opens replay at that moment with
+  // the airframe highlighted.
   const [replayAt, setReplayAt] = useState<number | null>(null)
+  const [replayFocus, setReplayFocus] = useState<string | null>(null)
 
   useEffect(() => {
     fetchStats(RECORDING_START, todayUtc())
@@ -614,9 +616,10 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
               days={days}
               day={day}
               onDayChange={setDay}
-              onReplayJump={(d, t) => {
+              onReplayJump={(d, t, hex) => {
                 setReplayDay(d)
                 setReplayAt(t)
+                setReplayFocus(hex)
                 setTab('replay')
               }}
             />
@@ -628,20 +631,27 @@ export default function HistoryModal({ onClose }: { onClose: () => void }) {
                 onChange={(d) => {
                   setReplayDay(d)
                   setReplayAt(null)
+                  setReplayFocus(null)
                 }}
                 options={[
                   ...(days.some((d) => d.day === todayUtc()) ? [] : [{ day: todayUtc(), note: 'so far' }]),
                   ...days.map((d) => ({ day: d.day })),
                 ]}
               />
-              <ReplayView key={`${replayDay}-${replayAt ?? ''}`} day={replayDay} initialAt={replayAt} />
+              <ReplayView
+                key={`${replayDay}-${replayAt ?? ''}-${replayFocus ?? ''}`}
+                day={replayDay}
+                initialAt={replayAt}
+                focusHex={replayFocus}
+              />
             </div>
           )}
           {days != null && tab === 'offenders' && (
             <OffendersView
-              onReplayJump={(d, t) => {
+              onReplayJump={(d, t, hex) => {
                 setReplayDay(d)
                 setReplayAt(t)
+                setReplayFocus(hex)
                 setTab('replay')
               }}
             />
