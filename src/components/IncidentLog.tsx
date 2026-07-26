@@ -9,6 +9,13 @@ import {
 import { parseIncidentCsv, incidentToRecord, type ReviewRecord } from '../lib/incidentCsv'
 import { formatClock, formatAltitudeFt, formatDistance } from '../lib/format'
 import { useSettings } from './SettingsContext'
+import { RECORDING_START } from '../config/permits'
+
+/** True when the recorder was already running at the observed moment, so the
+ * flight can be jumped to in the History replay. */
+function replayable(i: Incident): boolean {
+  return i.hex != null && new Date(i.observedAt).toISOString().slice(0, 10) >= RECORDING_START
+}
 
 function severityDot(sev: string): string {
   return sev === 'breach' ? 'bg-rose-500' : sev === 'info' ? 'bg-sky-500' : 'bg-amber-500'
@@ -30,10 +37,13 @@ export default function IncidentLog({
   onClose,
   onChange,
   onReview,
+  onReplay,
 }: {
   onClose: () => void
   onChange?: () => void
   onReview: (records: ReviewRecord[], title: string) => void
+  /** Jump to the recorded replay at the incident's observed moment. */
+  onReplay?: (i: Incident) => void
 }) {
   const [incidents, setIncidents] = useState<Incident[]>(() => getIncidents())
   const { units } = useSettings()
@@ -144,6 +154,14 @@ export default function IncidentLog({
                             </span>
                           ))}
                         </div>
+                      )}
+                      {onReplay && replayable(i) && (
+                        <button
+                          onClick={() => onReplay(i)}
+                          className="mt-1.5 text-[11px] font-semibold text-sky-400"
+                        >
+                          View in replay →
+                        </button>
                       )}
                     </div>
                     <button
