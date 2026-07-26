@@ -42,7 +42,7 @@ Status: **complete, pending your review.** Phase 2 (map) won't start until you c
    now**, allow location. You should get a distance-sorted list of jets with
    altitude / speed / vertical rate / distance / bearing.
 3. Sanity-check directly:
-   `https://aircraft-complaint-proxy.kieranhj.workers.dev/api/nearby?lat=51.188&lon=-0.802&radius=10&n=8`
+   `https://aircraft-complaint-proxy.kieranhj.workers.dev/api/nearby?lat=51.2758&lon=-0.7763&radius=10&n=8`
    → JSON with a `flights` array and `source: "airplanes.live"`.
 
 ## Honest limitations / things to watch

@@ -25,8 +25,10 @@ export interface CaptureEnv {
   UPSTREAM_BASE?: string
 }
 
-// ── Capture parameters (agreed in the plan) ──────────────────────────────────
-const HOME = { lat: 51.188, lon: -0.802 } // mirrors src/config/airports.ts HOME_LOCATION
+// ── Capture parameters ───────────────────────────────────────────────────────
+// Centred on FARNBOROUGH AIRPORT — the subject of the data gathering (no
+// personal address in the codebase). Mirrors src/config/airports.ts HOME_LOCATION.
+const CENTER = { lat: 51.2758, lon: -0.7763 }
 const RADIUS_NM = 25
 const SAMPLES_PER_MINUTE = 4 // every 15 s
 const SAMPLE_INTERVAL_MS = 15_000
@@ -153,7 +155,7 @@ export async function captureMinute(env: CaptureEnv, scheduledTime: number): Pro
     const wait = target - Date.now()
     if (wait > 0) await new Promise((r) => setTimeout(r, wait))
     try {
-      const up = await fetchUpstream(HOME.lat, HOME.lon, RADIUS_NM, env.UPSTREAM_BASE)
+      const up = await fetchUpstream(CENTER.lat, CENTER.lon, RADIUS_NM, env.UPSTREAM_BASE)
       const t = Math.round(Date.now() / 1000)
       for (const ac of up.aircraft) {
         const rec = toCaptureRecord(ac, t)
@@ -356,6 +358,6 @@ export async function captureHealth(env: CaptureEnv, now: number): Promise<unkno
     recording: lastT != null && now - lastT < 5 * 60_000, // captured within 5 min
     lastCapture: last,
     yesterday,
-    config: { radiusNm: RADIUS_NM, samplesPerMinute: SAMPLES_PER_MINUTE, groundKeepNm: GROUND_KEEP_NM },
+    config: { center: CENTER, radiusNm: RADIUS_NM, samplesPerMinute: SAMPLES_PER_MINUTE, groundKeepNm: GROUND_KEEP_NM },
   }
 }

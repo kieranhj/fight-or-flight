@@ -35,13 +35,13 @@
     </p>
     <p>
       Endpoint:
-      <code id="endpoint">https://api.airplanes.live/v2/point/51.188/-0.802/10</code>
+      <code id="endpoint">https://api.airplanes.live/v2/point/51.2758/-0.7763/10</code>
     </p>
     <button id="run">Run direct fetch</button>
     <div id="result" class="result muted">Not run yet.</div>
 
     <script>
-      const lat = 51.188, lon = -0.802, radius = 10
+      const lat = 51.2758, lon = -0.7763, radius = 10
       const endpoint = `https://api.airplanes.live/v2/point/${lat}/${lon}/${radius}`
       document.getElementById('endpoint').textContent = endpoint
       const out = document.getElementById('result')

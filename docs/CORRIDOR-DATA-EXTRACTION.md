@@ -129,9 +129,9 @@ Instructions:
     `tol < offset ≤ RULE_THRESHOLDS.corridorMaxOffsetNm` (5 nm) within 8 nm of EGLF.
   - All thresholds live in `src/config/rules.ts`.
 - Sanity check: a point known to be on the centreline should give R3 offset ≈ 0; a
-  point ~2 nm to the side should trigger "Off track". The user's home
-  (51.188, −0.802, Lower Bourne) sits just south of the Hog's Back — a useful
-  reference for whether the corridor passes where expected.
+  point ~2 nm to the side should trigger "Off track". The A31 Hog's Back ridge
+  (~5 nm south of the field) is a useful reference for whether the corridor
+  passes where expected.
 - Optional: a tiny throwaway Node script using `distanceToPolylineNm` to print the
   offset of a few sample points before/after, to confirm the new geometry behaves.
 

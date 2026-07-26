@@ -3,6 +3,7 @@ import { CORRIDORS } from '../../src/config/corridors'
 import { RULE_THRESHOLDS } from '../../src/config/rules'
 import { isRotorcraft } from '../../src/config/classification'
 import { UK_BANK_HOLIDAYS } from '../../src/config/calendar'
+import { OFFENDER_EXCLUDED_PERIODS } from '../../src/config/permits'
 import { haversineNm, pointInPolygon } from '../../src/lib/geo'
 import type { CaptureEnv } from './capture'
 
@@ -105,7 +106,9 @@ type Session = {
   r3: WorstSample | null
 }
 
-const HOME = { lat: 51.188, lon: -0.802 } // mirrors capture.ts / HOME_LOCATION
+// Capture/analysis centre: Farnborough Airport (mirrors capture.ts CENTER).
+// min_dist_home_nm therefore records distance from the airport-centred circle.
+const CENTER = { lat: 51.2758, lon: -0.7763 }
 
 function newSession(r: Rec): Session {
   return {
@@ -145,7 +148,7 @@ function addSample(s: Session, r: Rec): void {
   if (r.m) s.military = true
 
   const pos = { lat: r.la, lon: r.lo }
-  const dHome = haversineNm(pos, HOME)
+  const dHome = haversineNm(pos, CENTER)
   if (s.minDistHomeNm == null || dHome < s.minDistHomeNm) s.minDistHomeNm = dHome
   const dEglf = haversineNm(pos, EGLF_POS)
   if (s.minDistEglfNm == null || dEglf < s.minDistEglfNm) s.minDistEglfNm = dEglf
@@ -681,7 +684,13 @@ export async function queryOffenders(db: D1Database, days: number): Promise<unkn
     reg: string | null
     type: string | null
   }
-  const merged = (flights.results as Row[]).map((f) => ({ ...f, flags: byFlight.get(f.id) ?? [] }))
+  const all = (flights.results as Row[]).map((f) => ({ ...f, flags: byFlight.get(f.id) ?? [] }))
+  // Airshow weeks etc. run under their own consents — drop them from the
+  // offender stats (data stays in R2/D1; this is a query-time filter).
+  const isExcluded = (day: string) =>
+    OFFENDER_EXCLUDED_PERIODS.some((p) => day >= p.from && day <= p.to)
+  const merged = all.filter((f) => !isExcluded(f.day))
+  const excludedFlights = all.length - merged.length
 
   type Offender = {
     hex: string
@@ -728,7 +737,13 @@ export async function queryOffenders(db: D1Database, days: number): Promise<unkn
   const offenders = [...byHex.values()].sort(
     (a, b) => b.breaches - a.breaches || b.flaggedFlights - a.flaggedFlights,
   )
-  return { from, days, flights: merged, offenders }
+  return {
+    from,
+    days,
+    flights: merged,
+    offenders,
+    excluded: { periods: OFFENDER_EXCLUDED_PERIODS, flights: excludedFlights },
+  }
 }
 
 export async function queryStats(db: D1Database, from: string, to: string): Promise<unknown> {

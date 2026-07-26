@@ -66,7 +66,7 @@ phase's Definition of Done for review.
   optional "re-centre on refresh" toggle, and very-low unknown-category aircraft drawn
   as light rather than full-size.
 - **Continuous telemetry recorder (H1).** The Worker's cron triggers record every
-  aircraft within 25 nm of home to R2 (15 s cadence, gzipped NDJSON, minute→hour→day
+  aircraft within 25 nm of Farnborough Airport to R2 (15 s cadence, gzipped NDJSON, minute→hour→day
   compaction) for later analysis: Farnborough movement stats vs permits, day replay,
   offender tagging. See [`docs/TELEMETRY-CAPTURE-PLAN.md`](./docs/TELEMETRY-CAPTURE-PLAN.md)
   and [`docs/PHASE-H1-NOTES.md`](./docs/PHASE-H1-NOTES.md).

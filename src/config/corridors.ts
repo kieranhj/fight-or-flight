@@ -325,14 +325,14 @@ function poly(pairs: [number, number][]): LatLon[] {
 }
 
 /**
- * Controlled-airspace floors over the user's home area (Lower Bourne), AMSL feet.
+ * Controlled-airspace floors over the area south of Farnborough, AMSL feet.
  * Context for altitude rules; not a corridor.
  */
 export const HOME_AREA_CTA = {
-  label: 'CTA over Lower Bourne',
+  label: 'CTA south of Farnborough',
   cta1FloorFt: 2000,
   cta1CeilingFt: 2500,
   cta4FloorFt: 2500,
   cta4CeilingFt: 3500,
-  note: 'Controlled-airspace floor over Lower Bourne ≈ 2,000–2,500 ft AMSL. Context only.',
+  note: 'Controlled-airspace floor over the area ≈ 2,000–2,500 ft AMSL. Context only.',
 }

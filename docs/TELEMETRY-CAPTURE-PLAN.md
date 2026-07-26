@@ -1,6 +1,8 @@
 # Telemetry Capture & History — Build Plan
 
-Continuous capture of all aircraft telemetry within **25 nm of home**, stored
+Continuous capture of all aircraft telemetry within **25 nm of Farnborough
+Airport** (the capture centre since 2026-07-26; originally centred a few nm
+south, near the user's area), stored
 cheaply in the cloud (no machine at home), powering post-hoc analysis: Farnborough
 movement statistics vs permit limits, day-by-day replay ("scrubbing"), automatic
 tagging of potentially-offending flights for later complaints, and repeat-offender
@@ -24,7 +26,7 @@ identifiable** — an aircraft seen on the ground at EGLF before departure or af
 arrival needs no heuristic. The classify/trajectory guesswork remains only for
 flights first seen airborne.
 
-## 2. What 25 nm of home includes
+## 2. What 25 nm of Farnborough includes
 
 - **Airfields:** Farnborough (~5 nm), Blackbushe (~8 nm), RAF Odiham (~6 nm),
   Lasham (~9 nm, mostly transponder-less gliders), Fairoaks (~13 nm), Dunsfold

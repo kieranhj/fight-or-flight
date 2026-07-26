@@ -121,10 +121,15 @@ export const AIRPORTS: Record<Airport['icao'], Airport> = {
 
 export const AIRPORT_LIST: Airport[] = Object.values(AIRPORTS)
 
-/** User's home / GPS fallback coordinate (Build Plan §7). */
+/**
+ * Default fallback coordinate when GPS is unavailable, and the recorder's
+ * capture centre: Farnborough Airport — the subject of the data gathering.
+ * Users set their own home location in Settings (stored on-device only);
+ * no personal address ships with the app.
+ */
 export const HOME_LOCATION: LatLon & { elevationFt: number; label: string } = {
-  lat: 51.188,
-  lon: -0.802,
-  elevationFt: 236, // ~72 m AMSL
-  label: 'GU10 3RH, Dene Lane, Lower Bourne',
+  lat: 51.2758,
+  lon: -0.7763,
+  elevationFt: 238,
+  label: 'Farnborough Airport (default)',
 }

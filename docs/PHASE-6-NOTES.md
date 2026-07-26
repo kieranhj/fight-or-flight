@@ -42,7 +42,7 @@ permission/timeout errors, feeds-unavailable / stale handling, and now offline.
 - `npm run build` + typecheck clean (front-end + Worker).
 - **Headless browser test (10 assertions):** units convert live (2,500 ft → 762 m,
   1.2 nm → 2.2 km); N/radius feed the request (`radius=20&n=5`); home mode uses the
-  home lat (51.188) instead of device GPS (51.5); settings persist across reload;
+  configured home lat instead of device GPS (51.5); settings persist across reload;
   offline banner appears. No runtime errors. Settings panel screenshot captured.
 
 ## Data accuracy follow-up (researched — see `DATA-RESEARCH.md`)

@@ -3,10 +3,11 @@ import {
   fetchOffenders,
   FLAG_SHORT,
   type HistoryFlight,
+  type OffendersResponse,
   type OffenderSummary,
 } from '../lib/history'
 import type { NormalizedFlight } from '../lib/adsb'
-import { HOME_LOCATION } from '../config/airports'
+import type { LatLon } from '../config/types'
 import { isRotorcraft } from '../config/classification'
 import { haversineNm, bearingDeg } from '../lib/geo'
 import { useSettings } from './SettingsContext'
@@ -54,8 +55,10 @@ function flagMoment(f: HistoryFlight): number {
   return f.flags.find((fl) => fl.ts != null)?.ts ?? f.landing_ts ?? f.takeoff_ts ?? f.first_ts
 }
 
-/** Rebuild a NormalizedFlight at the flag's moment from the D1 row. */
-function toComplaintFlight(f: HistoryFlight): NormalizedFlight {
+/** Rebuild a NormalizedFlight at the flag's moment from the D1 row. `home` is
+ * the user's own vantage point from Settings (device-local; defaults to the
+ * airport) — used only to phrase distance/bearing in the complaint text. */
+function toComplaintFlight(f: HistoryFlight, home: LatLon): NormalizedFlight {
   const evid = f.flags.find((fl) => fl.lat != null && fl.lon != null) ?? null
   const lat = evid?.lat ?? null
   const lon = evid?.lon ?? null
@@ -75,8 +78,8 @@ function toComplaintFlight(f: HistoryFlight): NormalizedFlight {
     lat,
     lon,
     squawk: null,
-    distanceNm: pos ? Math.round(haversineNm(pos, HOME_LOCATION) * 10) / 10 : f.min_dist_home_nm,
-    bearingDeg: pos ? Math.round(bearingDeg(HOME_LOCATION, pos)) : null,
+    distanceNm: pos ? Math.round(haversineNm(pos, home) * 10) / 10 : f.min_dist_home_nm,
+    bearingDeg: pos ? Math.round(bearingDeg(home, pos)) : null,
     onGround: false,
     military: f.military === 1,
     route:
@@ -247,8 +250,10 @@ export default function OffendersView({
 }: {
   onReplayJump: (day: string, tSec: number, hex: string) => void
 }) {
+  const settings = useSettings()
+  const home: LatLon = { lat: settings.homeLat, lon: settings.homeLon }
   const [days, setDays] = useState<number>(90)
-  const [data, setData] = useState<{ flights: HistoryFlight[]; offenders: OffenderSummary[] } | null>(null)
+  const [data, setData] = useState<OffendersResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [complainFor, setComplainFor] = useState<HistoryFlight | null>(null)
 
@@ -297,6 +302,22 @@ export default function OffendersView({
         </p>
       )}
       {!error && data == null && <p className="p-3 text-center text-sm text-slate-400">Loading…</p>}
+      {data?.excluded != null && data.excluded.periods.some((p) => p.to >= data.from) && (
+        <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-200/90">
+          {data.excluded.periods
+            .filter((p) => p.to >= data.from)
+            .map((p) => (
+              <span key={p.from} className="block">
+                Excluded: {p.label} ({dayLabel(p.from)} – {dayLabel(p.to)})
+              </span>
+            ))}
+          {data.excluded.flights > 0 && (
+            <span className="block">
+              {data.excluded.flights} flagged flight{data.excluded.flights === 1 ? '' : 's'} hidden.
+            </span>
+          )}
+        </p>
+      )}
       {data != null && data.flights.length === 0 && (
         <p className="rounded-lg border border-slate-700 bg-slate-800/40 p-4 text-center text-sm text-slate-400">
           No flagged flights in this window. Quiet skies — or a well-behaved airport.
@@ -339,7 +360,7 @@ export default function OffendersView({
 
       {complainFor && (
         <ComplaintModal
-          flight={toComplaintFlight(complainFor)}
+          flight={toComplaintFlight(complainFor, home)}
           observedAt={flagMoment(complainFor) * 1000}
           when={new Date(flagMoment(complainFor) * 1000)}
           flags={complainFor.flags.map(toFlag)}
