@@ -1,4 +1,5 @@
 import type { NormalizedFlight } from './adsb'
+import { isRotorcraft } from '../config/classification'
 
 // A coarse aircraft class for at-a-glance tagging, derived from the military flag
 // and the ADS-B emitter category (A1–A7). Indicative — category isn't always
@@ -27,9 +28,9 @@ export type AircraftKind =
 
 export function aircraftKind(f: NormalizedFlight): AircraftKind {
   if (f.military) return 'military'
+  // Category A7, or a known rotorcraft type when category isn't broadcast.
+  if (isRotorcraft(f.category, f.type)) return 'helicopter'
   switch (f.category?.toUpperCase()) {
-    case 'A7':
-      return 'helicopter'
     case 'A1':
       return 'light'
     case 'A2':

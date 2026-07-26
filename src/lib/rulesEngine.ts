@@ -5,6 +5,7 @@ import type { RuleSeverity } from '../config/rules'
 import { AIRPORTS } from '../config/airports'
 import { CORRIDORS } from '../config/corridors'
 import { RULE_THRESHOLDS } from '../config/rules'
+import { isRotorcraft } from '../config/classification'
 import { UK_BANK_HOLIDAYS } from '../config/calendar'
 import { haversineNm, pointInPolygon } from './geo'
 
@@ -146,8 +147,14 @@ const EGLF_ALT_ZONES = CORRIDORS.filter((c) => c.airport === 'EGLF' && c.minAltF
 const r2Altitude: Rule = {
   id: 'R2-altitude',
   severity: 'indicative',
+  // Fixed-wing only: the WebTrak altitude bands describe jet profiles —
+  // helicopters fly their own low-level routings and are legitimately low.
   appliesTo: (f, ctx) =>
-    ctx.owningAirport?.icao === 'EGLF' && f.altBaroFt != null && f.lat != null && f.lon != null,
+    ctx.owningAirport?.icao === 'EGLF' &&
+    !isRotorcraft(f.category, f.type) &&
+    f.altBaroFt != null &&
+    f.lat != null &&
+    f.lon != null,
   evaluate: (f) => {
     const pos = { lat: f.lat!, lon: f.lon! }
     // Among the altitude-banded zones the flight is inside, use the most lenient
@@ -186,9 +193,11 @@ const EGLF_CORRIDORS = CORRIDORS.filter((c) => c.airport === 'EGLF')
 const r3Corridor: Rule = {
   id: 'R3-corridor',
   severity: 'indicative',
-  // Airborne only — an aircraft on the ground can't be "off track".
+  // Airborne fixed-wing only — a grounded aircraft can't be "off track", and
+  // the published corridors don't apply to helicopters' own routings.
   appliesTo: (f, ctx) =>
     !f.onGround &&
+    !isRotorcraft(f.category, f.type) &&
     ctx.owningAirport?.icao === 'EGLF' &&
     f.lat != null &&
     f.lon != null &&

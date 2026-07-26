@@ -7,6 +7,7 @@ import {
 } from '../lib/history'
 import type { NormalizedFlight } from '../lib/adsb'
 import { HOME_LOCATION } from '../config/airports'
+import { isRotorcraft } from '../config/classification'
 import { haversineNm, bearingDeg } from '../lib/geo'
 import { useSettings } from './SettingsContext'
 import { formatAltitudeFt } from '../lib/format'
@@ -155,7 +156,12 @@ function FlaggedRow({
       <div className="truncate text-xs text-slate-400">
         {[f.type, route].filter(Boolean).join(' · ') || f.hex.toUpperCase()}
       </div>
-      <div className="mt-1.5 flex flex-wrap gap-1.5">
+      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+        {isRotorcraft(f.category, f.type) && (
+          <span className="rounded-full border border-slate-600 bg-slate-700/40 px-2 py-0.5 text-[11px] font-semibold text-slate-300">
+            Helicopter
+          </span>
+        )}
         {f.flags.map((fl) => (
           <FlagBadge key={fl.rule_id} flag={toFlag(fl)} />
         ))}

@@ -116,6 +116,27 @@ export const AIRPORT_TERMINAL_RADIUS_NM: Record<Airport['icao'], number> = {
 // are never excluded (helicopters operate at both Farnborough and Blackbushe).
 const SIZE_RANK: Record<string, number> = { A1: 1, A2: 2, A3: 3, A4: 4, A5: 5, A6: 6 }
 
+/**
+ * Common rotorcraft ICAO type designators, for helicopters that don't broadcast
+ * emitter category A7. Helicopters fly their own low-level VFR routings — the
+ * published WebTrak corridors and altitude bands describe FIXED-WING profiles —
+ * so R2 (below profile) and R3 (off corridor) never apply to them. R1 hours
+ * still does: a movement is a movement.
+ */
+const ROTORCRAFT_TYPE_CODES = new Set([
+  'EC20', 'EC30', 'EC35', 'EC45', 'EC55', 'EC75', 'EC25', 'AS50', 'AS55', 'AS65',
+  'H500', 'H47', 'H60', 'H64', 'H160', 'A109', 'A119', 'A139', 'A149', 'A169',
+  'A189', 'B06', 'B105', 'B407', 'B412', 'B429', 'B505', 'R22', 'R44', 'R66',
+  'S76', 'S92', 'LYNX', 'MERL', 'PUMA', 'GAZL', 'EH10',
+])
+
+/** True when the aircraft is a helicopter (emitter category A7, or a known
+ * rotorcraft type code when the category isn't broadcast). */
+export function isRotorcraft(category: string | null, type: string | null): boolean {
+  if (category?.toUpperCase() === 'A7') return true
+  return type != null && ROTORCRAFT_TYPE_CODES.has(type.toUpperCase())
+}
+
 /** Could an aircraft of this ADS-B category plausibly operate at this airport? */
 export function categoryFitsAirport(
   category: string | null,
