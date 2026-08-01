@@ -144,18 +144,24 @@ function normalize(ac: RawAircraft): NormalizedFlight {
 // database. These free DBs rate-limit by IP, and Cloudflare Workers egress from
 // SHARED IPs, so a provider can 429 us regardless of our own (low) usage. We
 // therefore: cache hard (routes are static), serialise lookups, and back off
-// globally on a 429 so we never amplify it. `ROUTE_PROVIDER` selects the source;
+// per provider on a 429/403 so we never amplify it. `ROUTE_PROVIDERS` is the chain;
 // the /api/route diagnostic probes all of them so we can pick one that works from
 // the deployed Worker.
 type RouteProvider = 'adsbdb' | 'adsblol' | 'hexdb'
-// hexdb is the one reachable from Cloudflare's shared egress IPs without being
-// rate-limited (adsbdb 429s the IP; adsb.lol routeset returns 201/empty for us).
-const ROUTE_PROVIDER: RouteProvider = 'hexdb'
+// ORDERED FALLBACK CHAIN, not a single pinned source. Each of these free DBs
+// blocks Cloudflare's shared egress IPs from time to time — adsbdb has 429'd us
+// (which is why hexdb was pinned), and hexdb then began answering with a 403
+// Cloudflare bot challenge, which silently killed every lookup. Trying them in
+// order means one provider going dark degrades instead of breaking, with no
+// redeploy needed. adsb.lol is omitted: its routeset endpoint answers 201/empty
+// for us. The /api/route diagnostic still probes all three.
+const ROUTE_PROVIDERS: readonly RouteProvider[] = ['adsbdb', 'hexdb']
 
 const ROUTE_CACHE_TTL = 21_600 // 6h for a known route
 const ROUTE_NEG_TTL = 1_800 // 30m for an unknown callsign
-const ROUTE_BACKOFF_TTL = 300 // pause hitting the provider after a 429
-const BACKOFF_KEY = 'https://cache.local/route-backoff'
+const ROUTE_BACKOFF_TTL = 300 // pause hitting a provider that refused us
+/** Per-provider backoff marker: 429 (rate limit) or 403 (bot challenge). */
+const backoffKey = (p: RouteProvider) => new Request(`https://cache.local/route-backoff/${p}`)
 
 type ProviderHit = { status: number; route: FlightRoute | null; body: string }
 
@@ -283,6 +289,15 @@ async function resolveAirport(icao: string, ctx: ExecutionContext): Promise<Airp
   return meta
 }
 
+/** Prefer a hexdb-resolved friendly name; else keep whatever the route provider
+ * already supplied (adsbdb returns IATA codes itself), else the ICAO code. Label
+ * resolution goes through hexdb, which can be blocked while routes still work —
+ * when it is, we must not downgrade a good "LHR" to "EGLL". */
+function bestLabel(icao: string | null, m: AirportMeta, existing: string | null): string | null {
+  if (m.iata || m.name) return friendlyLabel(icao, m)
+  return existing ?? icao
+}
+
 /** Replace a route's ICAO labels with friendly IATA / city names (in place). */
 async function labelRoute(route: FlightRoute, ctx: ExecutionContext): Promise<void> {
   const blank: AirportMeta = { iata: null, name: null }
@@ -290,53 +305,67 @@ async function labelRoute(route: FlightRoute, ctx: ExecutionContext): Promise<vo
     route.originIcao ? resolveAirport(route.originIcao, ctx) : Promise.resolve(blank),
     route.destinationIcao ? resolveAirport(route.destinationIcao, ctx) : Promise.resolve(blank),
   ])
-  route.originLabel = friendlyLabel(route.originIcao, o)
-  route.destinationLabel = friendlyLabel(route.destinationIcao, d)
+  route.originLabel = bestLabel(route.originIcao, o, route.originLabel)
+  route.destinationLabel = bestLabel(route.destinationIcao, d, route.destinationLabel)
 }
 
 type RouteResult = { route: FlightRoute | null; rateLimited: boolean }
 
-/** Look up one callsign's route via ROUTE_PROVIDER, with caching + 429 backoff. */
+/** Look up one callsign's route, walking ROUTE_PROVIDERS until one answers.
+ * Cached per callsign (not per provider, so a provider swap doesn't orphan the
+ * cache) with per-provider backoff when one refuses us. */
 async function lookupRoute(callsign: string, ctx: ExecutionContext): Promise<RouteResult> {
   const cs = callsign.trim().toUpperCase()
   if (!cs) return { route: null, rateLimited: false }
   const cache = caches.default
-  const key = new Request(`https://cache.local/route/${ROUTE_PROVIDER}/${encodeURIComponent(cs)}`)
+  const key = new Request(`https://cache.local/route/v2/${encodeURIComponent(cs)}`)
   const hit = await cache.match(key)
   if (hit) return { route: ((await hit.json()) as { route: FlightRoute | null }).route, rateLimited: false }
-  if (await cache.match(new Request(BACKOFF_KEY))) return { route: null, rateLimited: true }
 
-  let hitData: ProviderHit
-  try {
-    hitData = await fetchProvider(ROUTE_PROVIDER, cs)
-  } catch {
-    return { route: null, rateLimited: false } // network blip — don't cache
-  }
+  // True when every provider we tried is refusing us — only then is it worth
+  // telling the caller to stop asking (enrichRoutes short-circuits on it).
+  let allRefused = true
+  for (const provider of ROUTE_PROVIDERS) {
+    if (await cache.match(backoffKey(provider))) continue
 
-  if (hitData.status === 429) {
+    let hitData: ProviderHit
+    try {
+      hitData = await fetchProvider(provider, cs)
+    } catch {
+      allRefused = false // network blip, not a refusal — don't cache, try next
+      continue
+    }
+
+    // 429 rate limit or 403 bot challenge: back this provider off and fall
+    // through to the next one rather than failing the lookup outright.
+    if (hitData.status === 429 || hitData.status === 403) {
+      ctx.waitUntil(
+        cache.put(
+          backoffKey(provider),
+          new Response('1', { headers: { 'Cache-Control': `public, max-age=${ROUTE_BACKOFF_TTL}` } }),
+        ),
+      )
+      continue
+    }
+
+    allRefused = false
+    // 200 with a route → cache long; 200/404 with none → cache short; other → try next.
+    const ok2xx = hitData.status >= 200 && hitData.status < 300
+    if (!ok2xx && hitData.status !== 404) continue
+    // Resolve ICAO codes → friendly IATA / city-name labels (cached hard).
+    if (hitData.route) await labelRoute(hitData.route, ctx)
+    const ttl = hitData.route ? ROUTE_CACHE_TTL : ROUTE_NEG_TTL
     ctx.waitUntil(
       cache.put(
-        new Request(BACKOFF_KEY),
-        new Response('1', { headers: { 'Cache-Control': `public, max-age=${ROUTE_BACKOFF_TTL}` } }),
+        key,
+        new Response(JSON.stringify({ route: hitData.route }), {
+          headers: { 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${ttl}` },
+        }),
       ),
     )
-    return { route: null, rateLimited: true }
+    return { route: hitData.route, rateLimited: false }
   }
-  // 200 with a route → cache long; 200/404 with none → cache short; other → don't cache.
-  const ok2xx = hitData.status >= 200 && hitData.status < 300
-  if (!ok2xx && hitData.status !== 404) return { route: null, rateLimited: false }
-  // Resolve ICAO codes → friendly IATA / city-name labels (cached hard).
-  if (hitData.route) await labelRoute(hitData.route, ctx)
-  const ttl = hitData.route ? ROUTE_CACHE_TTL : ROUTE_NEG_TTL
-  ctx.waitUntil(
-    cache.put(
-      key,
-      new Response(JSON.stringify({ route: hitData.route }), {
-        headers: { 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${ttl}` },
-      }),
-    ),
-  )
-  return { route: hitData.route, rateLimited: false }
+  return { route: null, rateLimited: allRefused }
 }
 
 /**
@@ -492,7 +521,7 @@ export default {
           }
         }),
       )
-      return json({ callsign: target, active: ROUTE_PROVIDER, providers: results }, env)
+      return json({ callsign: target, chain: ROUTE_PROVIDERS, providers: results }, env)
     }
 
     // Diagnostic: GET /api/airport?icao=EGLL → raw hexdb airport lookup + parsed label.
