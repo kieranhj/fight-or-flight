@@ -15,6 +15,12 @@ on:
         required: false
         type: boolean
         default: false
+      probe_provider:
+        description: 'Instead of the Worker, probe a route provider DIRECTLY from this runner (diagnoses whether a block is Worker-egress-specific)'
+        required: false
+        type: choice
+        options: ['', 'hexdb', 'adsbdb']
+        default: ''
   # Also runs when this file itself changes in a PR — which both smoke-tests the
   # workflow and lets an agent trigger a health check before it lands on main.
   pull_request:
@@ -25,7 +31,31 @@ jobs:
   health:
     runs-on: ubuntu-latest
     steps:
+      # Diagnostic only: one request per provider from a GitHub runner (a
+      # different datacenter IP than the Worker's shared egress). If hexdb
+      # answers here but 403s the Worker, the block is Worker-egress-specific;
+      # if it 403s here too, it is blanket datacenter blocking and no
+      # client-side change on our side will help.
+      - name: Probe a route provider directly
+        if: inputs.probe_provider != ''
+        env:
+          PROVIDER: ${{ inputs.probe_provider }}
+        run: |
+          case "$PROVIDER" in
+            hexdb)  URL="https://hexdb.io/api/v1/route/icao/BAW117" ;;
+            adsbdb) URL="https://api.adsbdb.com/v0/callsign/BAW117" ;;
+            *) echo "::error::unknown provider"; exit 1 ;;
+          esac
+          echo "== $PROVIDER : $URL"
+          for UA in "fight-or-flight-monitor/1.0 (community aircraft noise monitor)" "curl/8.5.0"; do
+            code=$(curl -sS --max-time 30 -o /tmp/p.txt -w '%{http_code}' -A "$UA" "$URL" || echo 000)
+            echo "-- UA: $UA"
+            echo "   HTTP $code"
+            head -c 180 /tmp/p.txt; echo; echo
+          done
+
       - name: Fetch from the Worker
+        if: inputs.probe_provider == ''
         env:
           REQ_PATH: ${{ inputs.path || '/api/history/health' }}
           SUMMARY: ${{ inputs.summary }}
