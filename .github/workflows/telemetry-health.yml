@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       path:
-        description: 'Worker path to fetch (history endpoints only)'
+        description: 'Worker path to fetch (history + route diagnostics only)'
         required: false
         default: '/api/history/health'
   # Also runs when this file itself changes in a PR — which both smoke-tests the
@@ -26,7 +26,11 @@ jobs:
         run: |
           case "$REQ_PATH" in
             /api/history/*) ;;
-            *) echo "::error::path must start with /api/history/"; exit 1 ;;
+            # Read-only route diagnostics: /api/route probes every candidate
+            # provider, /api/route-lookup is the cached production path.
+            /api/route|/api/route\?*) ;;
+            /api/route-lookup\?*) ;;
+            *) echo "::error::path must start with /api/history/ or /api/route"; exit 1 ;;
           esac
           curl -sS --max-time 120 \
             "https://aircraft-complaint-proxy.kieranhj.workers.dev$REQ_PATH" \
