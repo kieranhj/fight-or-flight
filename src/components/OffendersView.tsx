@@ -6,16 +6,13 @@ import {
   type OffendersResponse,
   type OffenderSummary,
 } from '../lib/history'
-import type { NormalizedFlight } from '../lib/adsb'
 import type { LatLon } from '../config/types'
+import { toFlag, flagMoment, toComplaintFlight } from '../lib/historyComplaint'
 import { isRotorcraft } from '../config/classification'
-import { haversineNm, bearingDeg } from '../lib/geo'
 import { useSettings } from './SettingsContext'
 import { formatAltitudeFt } from '../lib/format'
 import FlagBadge from './FlagBadge'
 import ComplaintModal from './ComplaintModal'
-import type { Flag } from '../lib/rulesEngine'
-import type { HistoryFlag } from '../lib/history'
 
 // "For Review" tab (Phase H5): every auto-flagged flight across the recorded
 // history, aggregated by airframe so repeat appearances stand out, with jumps
@@ -28,13 +25,6 @@ const WINDOWS = [
   { days: 90, label: '90 days' },
   { days: 365, label: 'Year' },
 ] as const
-
-const toFlag = (f: HistoryFlag): Flag => ({
-  ruleId: f.rule_id,
-  severity: f.severity,
-  short: FLAG_SHORT[f.rule_id] ?? f.rule_id,
-  reason: f.reason,
-})
 
 const UK_CLOCK = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Europe/London',
@@ -50,50 +40,6 @@ const dayLabel = (day: string) =>
     day: 'numeric',
     month: 'short',
   }).format(new Date(`${day}T12:00:00Z`))
-
-/** The flag moment: the evidence timestamp a post-hoc complaint is about. */
-function flagMoment(f: HistoryFlight): number {
-  return f.flags.find((fl) => fl.ts != null)?.ts ?? f.landing_ts ?? f.takeoff_ts ?? f.first_ts
-}
-
-/** Rebuild a NormalizedFlight at the flag's moment from the D1 row. `home` is
- * the user's own vantage point from Settings (device-local; defaults to the
- * airport) — used only to phrase distance/bearing in the complaint text. */
-function toComplaintFlight(f: HistoryFlight, home: LatLon): NormalizedFlight {
-  const evid = f.flags.find((fl) => fl.lat != null && fl.lon != null) ?? null
-  const lat = evid?.lat ?? null
-  const lon = evid?.lon ?? null
-  const pos = lat != null && lon != null ? { lat, lon } : null
-  return {
-    hex: f.hex,
-    callsign: f.callsign,
-    registration: f.reg,
-    type: f.type,
-    category: f.category,
-    altBaroFt: evid?.alt_ft ?? f.min_alt_ft,
-    altGeomFt: null,
-    groundSpeedKt: null,
-    track: null,
-    verticalRateFpm: null,
-    navAltitudeFt: null,
-    lat,
-    lon,
-    squawk: null,
-    distanceNm: pos ? Math.round(haversineNm(pos, home) * 10) / 10 : f.min_dist_home_nm,
-    bearingDeg: pos ? Math.round(bearingDeg(home, pos)) : null,
-    onGround: false,
-    military: f.military === 1,
-    route:
-      f.origin_icao || f.destination_icao
-        ? {
-            originIcao: f.origin_icao,
-            destinationIcao: f.destination_icao,
-            originLabel: f.origin_label ?? f.origin_icao,
-            destinationLabel: f.destination_label ?? f.destination_icao,
-          }
-        : null,
-  }
-}
 
 // ── CSV export (matches the evidence people attach to representations) ───────
 function csvCell(v: string | number | null): string {

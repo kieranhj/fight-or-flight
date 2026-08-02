@@ -12,6 +12,7 @@ import {
 import { fetchRoute, type FlightRoute, type NormalizedFlight } from '../lib/adsb'
 import { aircraftIcon, CorridorOverlay } from './MapView'
 import FlightDetail from './FlightDetail'
+import ComplaintModal from './ComplaintModal'
 import { useSettings } from './SettingsContext'
 import { haversineNm, bearingDeg } from '../lib/geo'
 
@@ -137,6 +138,8 @@ export default function ReplayView({
   const [playing, setPlaying] = useState(false)
   const [speed, setSpeed] = useState<(typeof SPEEDS)[number]['mps']>(1)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  // Complaint raised from the replay card, about the aircraft AT the playhead.
+  const [complainFor, setComplainFor] = useState<NormalizedFlight | null>(null)
   const [focus, setFocus] = useState<string | null>(focusHex)
   const [groups, setGroups] = useState<ReadonlySet<ReplayGroup>>(new Set(GROUP_ORDER))
   // Route lookups for opened cards, memoized per callsign for the session.
@@ -331,7 +334,21 @@ export default function ReplayView({
           )}
           when={new Date(playhead * 1000)}
           zClass="z-[1300]"
+          onComplain={setComplainFor}
           onClose={() => setSelectedId(null)}
+        />
+      )}
+
+      {/* Flags here are re-derived at the playhead (the replay has the track,
+          not the nightly rollup's stored flags), so the letter cites exactly
+          what the card above it shows. */}
+      {complainFor && playhead != null && (
+        <ComplaintModal
+          flight={complainFor}
+          observedAt={playhead * 1000}
+          when={new Date(playhead * 1000)}
+          zClass="z-[1400]"
+          onClose={() => setComplainFor(null)}
         />
       )}
 

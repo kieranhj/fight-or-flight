@@ -3,20 +3,19 @@ import {
   fetchStats,
   fetchDayFlights,
   todayUtc,
-  FLAG_SHORT,
   type DailyStat,
   type HistoryFlight,
-  type HistoryFlag,
 } from '../lib/history'
 import { FARNBOROUGH_PERMITS, RECORDING_START, OFFENDER_EXCLUDED_PERIODS } from '../config/permits'
 import { AIRPORTS } from '../config/airports'
 import { fetchRoute, type FlightRoute } from '../lib/adsb'
 import { formatAltitudeFt } from '../lib/format'
 import { useSettings } from './SettingsContext'
+import { toFlag, flagMoment, toComplaintFlight } from '../lib/historyComplaint'
+import ComplaintModal from './ComplaintModal'
 import FlagBadge from './FlagBadge'
 import ReplayView from './ReplayView'
 import OffendersView from './OffendersView'
-import type { Flag } from '../lib/rulesEngine'
 
 // History tab (Phase H3+H4): stats vs the Farnborough permit caps, a browsable
 // per-day flight log (nightly D1 summaries), and a map replay of any recorded
@@ -33,19 +32,6 @@ const TAB_LABEL: Record<Tab, string> = {
   replay: 'Replay',
   offenders: 'For Review',
 }
-
-/** The most interesting moment of a flight (for replay jumps): the flag's
- * evidence time, else landing/takeoff, else first seen. */
-function flightMoment(f: HistoryFlight): number {
-  return f.flags.find((fl) => fl.ts != null)?.ts ?? f.landing_ts ?? f.takeoff_ts ?? f.first_ts
-}
-
-const toFlag = (f: HistoryFlag): Flag => ({
-  ruleId: f.rule_id,
-  severity: f.severity,
-  short: FLAG_SHORT[f.rule_id] ?? f.rule_id,
-  reason: f.reason,
-})
 
 function dayLabel(day: string): string {
   return new Intl.DateTimeFormat('en-GB', {
@@ -440,7 +426,10 @@ function FlightRow({
 const routeMemo = new Map<string, FlightRoute | null>()
 
 function FlightSheet({ f, onClose }: { f: HistoryFlight; onClose: () => void }) {
-  const { units } = useSettings()
+  const settings = useSettings()
+  const { units } = settings
+  const home = { lat: settings.homeLat, lon: settings.homeLon }
+  const [complain, setComplain] = useState(false)
   const mv = movementText(f)
   const [route, setRoute] = useState<FlightRoute | null>(
     f.callsign ? (routeMemo.get(f.callsign) ?? null) : null,
@@ -542,12 +531,32 @@ function FlightSheet({ f, onClose }: { f: HistoryFlight; onClose: () => void }) 
           ))}
         </div>
 
+        <button
+          onClick={() => setComplain(true)}
+          className="mt-3 w-full rounded-lg bg-sky-500 px-3 py-2.5 text-sm font-semibold text-white"
+        >
+          Generate complaint
+        </button>
+
         <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
           From the recorder's nightly summary. Ground-truth movements were seen on the ground at the
-          field; inferred ones appeared/vanished low over it. Day replay on the map arrives in a
-          later phase.
+          field; inferred ones appeared/vanished low over it.{' '}
+          {f.flags.length > 0
+            ? 'A complaint cites the flags exactly as they were logged.'
+            : 'This flight was not flagged, and only its flag evidence carries a position — open it in the replay if you want the complaint to name where it was.'}
         </p>
       </div>
+
+      {complain && (
+        <ComplaintModal
+          flight={toComplaintFlight(f, home)}
+          observedAt={flagMoment(f) * 1000}
+          when={new Date(flagMoment(f) * 1000)}
+          flags={f.flags.length > 0 ? f.flags.map(toFlag) : undefined}
+          zClass="z-[1400]"
+          onClose={() => setComplain(false)}
+        />
+      )}
     </div>
   )
 }
@@ -631,7 +640,7 @@ function FlightsView({
       )}
       <ul className="space-y-2">
         {shown.map((f) => (
-          <FlightRow key={f.id} f={f} onSelect={setSelected} onReplay={(fl) => onReplayJump(fl.day, flightMoment(fl), fl.hex)} />
+          <FlightRow key={f.id} f={f} onSelect={setSelected} onReplay={(fl) => onReplayJump(fl.day, flagMoment(fl), fl.hex)} />
         ))}
       </ul>
 
