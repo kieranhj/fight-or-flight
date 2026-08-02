@@ -230,9 +230,15 @@ async function fetchProvider(provider: RouteProvider, cs: string): Promise<Provi
 }
 
 type AdsbdbAirport = { icao_code?: string; iata_code?: string; name?: string; municipality?: string }
+/** adsbdb returns full airport metadata alongside the route, so we can build the
+ * display label from the SAME response — no second lookup. Formatted via
+ * friendlyLabel so "Shannon (SNN)" reads identically whichever provider answered. */
 function adsbdbLabel(a: AdsbdbAirport | undefined): string | null {
   if (!a) return null
-  return a.iata_code ?? a.municipality ?? a.name ?? a.icao_code ?? null
+  return friendlyLabel(a.icao_code ?? null, {
+    iata: a.iata_code ?? null,
+    name: a.name ?? a.municipality ?? null,
+  })
 }
 
 // ── Airport name resolution (ICAO → IATA / city name, via hexdb) ─────────────
@@ -298,6 +304,16 @@ function bestLabel(icao: string | null, m: AirportMeta, existing: string | null)
   return existing ?? icao
 }
 
+/** A label that is absent, or identical to the ICAO code, carries no more
+ * information than the code — only then is a hexdb airport lookup worth the
+ * subrequests. adsbdb names its own airports, so the common path now skips
+ * hexdb entirely (which matters: hexdb currently serves Cloudflare's bot
+ * challenge to Workers egress, so those lookups could only ever fail). */
+function needsFriendlyLabels(r: FlightRoute): boolean {
+  const bare = (label: string | null, icao: string | null) => label == null || label === icao
+  return bare(r.originLabel, r.originIcao) || bare(r.destinationLabel, r.destinationIcao)
+}
+
 /** Replace a route's ICAO labels with friendly IATA / city names (in place). */
 async function labelRoute(route: FlightRoute, ctx: ExecutionContext): Promise<void> {
   const blank: AirportMeta = { iata: null, name: null }
@@ -352,8 +368,9 @@ async function lookupRoute(callsign: string, ctx: ExecutionContext): Promise<Rou
     // 200 with a route → cache long; 200/404 with none → cache short; other → try next.
     const ok2xx = hitData.status >= 200 && hitData.status < 300
     if (!ok2xx && hitData.status !== 404) continue
-    // Resolve ICAO codes → friendly IATA / city-name labels (cached hard).
-    if (hitData.route) await labelRoute(hitData.route, ctx)
+    // Resolve ICAO codes → friendly IATA / city-name labels (cached hard), but
+    // only when the provider didn't already name them.
+    if (hitData.route && needsFriendlyLabels(hitData.route)) await labelRoute(hitData.route, ctx)
     const ttl = hitData.route ? ROUTE_CACHE_TTL : ROUTE_NEG_TTL
     ctx.waitUntil(
       cache.put(
