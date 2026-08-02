@@ -8,7 +8,7 @@ import {
   type HistoryFlight,
   type HistoryFlag,
 } from '../lib/history'
-import { FARNBOROUGH_PERMITS, RECORDING_START } from '../config/permits'
+import { FARNBOROUGH_PERMITS, RECORDING_START, OFFENDER_EXCLUDED_PERIODS } from '../config/permits'
 import { AIRPORTS } from '../config/airports'
 import { fetchRoute, type FlightRoute } from '../lib/adsb'
 import { formatAltitudeFt } from '../lib/format'
@@ -24,6 +24,15 @@ import type { Flag } from '../lib/rulesEngine'
 
 type Tab = 'stats' | 'flights' | 'replay' | 'offenders'
 type Filter = 'all' | 'eglf' | 'flagged'
+
+/** Tab ids stay as built (and match the API paths); only the labels are user
+ * facing. "For review" rather than "offenders" — the flags are indicative. */
+const TAB_LABEL: Record<Tab, string> = {
+  stats: 'Stats',
+  flights: 'Flights',
+  replay: 'Replay',
+  offenders: 'For Review',
+}
 
 /** The most interesting moment of a flight (for replay jumps): the flag's
  * evidence time, else landing/takeoff, else first seen. */
@@ -79,6 +88,68 @@ function movementText(f: HistoryFlight): string | null {
 }
 
 // ── Stats tab ────────────────────────────────────────────────────────────────
+
+/** Days that run under their own consents (the airshow) are excluded from the
+ * averages for the same reason they're excluded from the review list: they say
+ * nothing about normal operations. */
+const isExcludedDay = (day: string) =>
+  OFFENDER_EXCLUDED_PERIODS.some((p) => day >= p.from && day <= p.to)
+
+/** Mean weeks in a month, so a monthly projection isn't 4 or 5 depending on luck. */
+const WEEKS_PER_MONTH = 365.25 / 12 / 7 // ≈ 4.35
+
+type Averages = {
+  weekday: number | null
+  nonWeekday: number | null
+  weekdayDays: number
+  nonWeekdayDays: number
+  week: number | null
+  month: number | null
+  excludedDays: number
+}
+
+/** Mean Farnborough movements per day, split by day type, plus projections.
+ * Only whole recorded days count — the rollup runs after a day closes, so the
+ * current (partial) day never appears in `days`. */
+function computeAverages(days: DailyStat[]): Averages {
+  let weekdayDays = 0
+  let weekdayMv = 0
+  let nonWeekdayDays = 0
+  let nonWeekdayMv = 0
+  let excludedDays = 0
+  for (const d of days) {
+    if (isExcludedDay(d.day)) {
+      excludedDays++
+      continue
+    }
+    const mv = d.eglf_dep + d.eglf_arr
+    if (d.weekend || d.bank_holiday) {
+      nonWeekdayDays++
+      nonWeekdayMv += mv
+    } else {
+      weekdayDays++
+      weekdayMv += mv
+    }
+  }
+  const weekday = weekdayDays > 0 ? weekdayMv / weekdayDays : null
+  const nonWeekday = nonWeekdayDays > 0 ? nonWeekdayMv / nonWeekdayDays : null
+  // A week needs both kinds of day sampled, or the projection is a guess.
+  const week = weekday != null && nonWeekday != null ? weekday * 5 + nonWeekday * 2 : null
+  return {
+    weekday,
+    nonWeekday,
+    weekdayDays,
+    nonWeekdayDays,
+    week,
+    month: week != null ? week * WEEKS_PER_MONTH : null,
+    excludedDays,
+  }
+}
+
+const avg1dp = (v: number | null) => (v == null ? '—' : v.toFixed(1))
+const rounded = (v: number | null) => (v == null ? '—' : Math.round(v).toLocaleString())
+const sampleSub = (n: number, unit: string) => `movements · ${n} ${unit}${n === 1 ? '' : 's'} sampled`
+
 function Tile({
   label,
   value,
@@ -129,6 +200,8 @@ function StatsView({
     return { eglf, nonWeekday, breaches, records }
   }, [days])
 
+  const averages = useMemo(() => computeAverages(days), [days])
+
   // Last 14 recorded-range days (calendar days, zero-filled), oldest → newest.
   const strip = useMemo(() => {
     const byDay = new Map(days.map((d) => [d.day, d]))
@@ -167,6 +240,44 @@ function StatsView({
           value={days.length.toLocaleString()}
           sub={`${totals.records.toLocaleString()} position records`}
         />
+      </div>
+
+      {/* Averages over normal operating days — the shape the caps are written in. */}
+      <div>
+        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Farnborough averages
+        </h3>
+        <div className="grid grid-cols-2 gap-2.5">
+          <Tile
+            label="Per weekday"
+            value={avg1dp(averages.weekday)}
+            sub={sampleSub(averages.weekdayDays, 'weekday')}
+          />
+          <Tile
+            label="Per weekend / BH"
+            value={avg1dp(averages.nonWeekday)}
+            sub={sampleSub(averages.nonWeekdayDays, 'day')}
+          />
+          <Tile
+            label="Per week"
+            value={rounded(averages.week)}
+            sub="projected · 5 weekdays + 2 weekend/BH"
+          />
+          <Tile
+            label="Per month"
+            value={rounded(averages.month)}
+            sub={`projected · ≈${WEEKS_PER_MONTH.toFixed(2)} weeks`}
+          />
+        </div>
+        <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+          Weekly and monthly figures are <span className="font-semibold">projections</span> from the
+          daily averages, not observed totals
+          {averages.excludedDays > 0 &&
+            `, and exclude ${averages.excludedDays} airshow day${
+              averages.excludedDays === 1 ? '' : 's'
+            } that ran under separate consents`}
+          .
+        </p>
       </div>
 
       {/* Farnborough movements per day, last 14 days. Single series; tap a bar to inspect. */}
@@ -532,6 +643,13 @@ function FlightsView({
 // ── Modal shell ──────────────────────────────────────────────────────────────
 type JumpFrom = 'flights' | 'offenders' | 'log'
 
+/** Where a replay jump came from, as it reads in the back button. */
+const JUMP_LABEL: Record<JumpFrom, string> = {
+  flights: 'flights',
+  offenders: 'review',
+  log: 'log',
+}
+
 export default function HistoryModal({
   onClose,
   initialReplay,
@@ -599,11 +717,11 @@ export default function HistoryModal({
               <button
                 key={t}
                 onClick={() => goTab(t)}
-                className={`flex-1 rounded-md py-1.5 capitalize transition ${
+                className={`flex-1 rounded-md py-1.5 transition ${
                   tab === t ? 'bg-sky-500 text-white' : 'text-slate-400'
                 }`}
               >
-                {t}
+                {TAB_LABEL[t]}
               </button>
             ))}
           </div>
@@ -657,7 +775,7 @@ export default function HistoryModal({
                   onClick={() => (jumpFrom === 'log' ? onBackToLog?.() : goTab(jumpFrom))}
                   className="rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-xs font-semibold text-sky-400"
                 >
-                  ← Back to {jumpFrom}
+                  ← Back to {JUMP_LABEL[jumpFrom]}
                 </button>
               )}
               <DaySelect

@@ -17,9 +17,10 @@ import ComplaintModal from './ComplaintModal'
 import type { Flag } from '../lib/rulesEngine'
 import type { HistoryFlag } from '../lib/history'
 
-// Offenders tab (Phase H5): every auto-flagged flight across the recorded
-// history, aggregated into a repeat-offender table by airframe, with jumps into
-// replay and post-hoc complaints (never auto-sent).
+// "For Review" tab (Phase H5): every auto-flagged flight across the recorded
+// history, aggregated by airframe so repeat appearances stand out, with jumps
+// into replay and post-hoc complaints (never auto-sent). Named for review, not
+// for guilt — R2/R3 flags are indicative and want a human look before acting.
 
 const WINDOWS = [
   { days: 7, label: '7 days' },
@@ -288,7 +289,7 @@ export default function OffendersView({
           ))}
         </div>
         <button
-          onClick={() => data && download(`offenders-${days}d.csv`, offendersCsv(data.flights))}
+          onClick={() => data && download(`flagged-flights-${days}d.csv`, offendersCsv(data.flights))}
           disabled={!data || data.flights.length === 0}
           className="shrink-0 rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-300 disabled:opacity-40"
         >
@@ -327,7 +328,7 @@ export default function OffendersView({
       {data != null && data.offenders.length > 0 && (
         <>
           <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Repeat offenders · by airframe
+            Most flagged · by airframe
           </h3>
           <ul className="space-y-2">
             {data.offenders.map((o) => (
