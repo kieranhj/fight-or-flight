@@ -10,6 +10,7 @@ import type { LatLon } from '../config/types'
 import { toFlag, flagMoment, toComplaintFlight } from '../lib/historyComplaint'
 import { isRotorcraft } from '../config/classification'
 import { useSettings } from './SettingsContext'
+import { loadReadAt, saveReadAt } from '../lib/reviewRead'
 import { formatAltitudeFt } from '../lib/format'
 import FlagBadge from './FlagBadge'
 import ComplaintModal from './ComplaintModal'
@@ -25,6 +26,48 @@ const WINDOWS = [
   { days: 90, label: '90 days' },
   { days: 365, label: 'Year' },
 ] as const
+
+/** Per-airframe aggregates over whatever is currently VISIBLE. The API returns
+ * its own aggregates for the whole window, but once the list is filtered those
+ * counts would contradict the rows underneath, so they're recomputed here.
+ * Mirrors queryOffenders in worker/src/rollup.ts (breaches first, then volume). */
+function aggregate(flights: HistoryFlight[]): OffenderSummary[] {
+  const byHex = new Map<string, OffenderSummary>()
+  for (const f of flights) {
+    let o = byHex.get(f.hex)
+    if (!o) {
+      o = {
+        hex: f.hex, reg: null, type: null, callsigns: [],
+        flaggedFlights: 0, breaches: 0, indicative: 0, rules: {},
+        firstDay: f.day, lastDay: f.day,
+      }
+      byHex.set(f.hex, o)
+    }
+    if (f.reg) o.reg = f.reg
+    if (f.type) o.type = f.type
+    if (f.callsign && !o.callsigns.includes(f.callsign)) o.callsigns.push(f.callsign)
+    o.flaggedFlights++
+    if (f.day < o.firstDay) o.firstDay = f.day
+    if (f.day > o.lastDay) o.lastDay = f.day
+    for (const fl of f.flags) {
+      o.rules[fl.rule_id] = (o.rules[fl.rule_id] ?? 0) + 1
+      if (fl.severity === 'breach') o.breaches++
+      else o.indicative++
+    }
+  }
+  return [...byHex.values()].sort(
+    (a, b) => b.breaches - a.breaches || b.flaggedFlights - a.flaggedFlights,
+  )
+}
+
+const UK_STAMP = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Europe/London',
+  day: 'numeric',
+  month: 'short',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+})
 
 const UK_CLOCK = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Europe/London',
@@ -203,6 +246,10 @@ export default function OffendersView({
   const [data, setData] = useState<OffendersResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [complainFor, setComplainFor] = useState<HistoryFlight | null>(null)
+  const [readAt, setReadAt] = useState<number>(() => loadReadAt())
+  const [filter, setFilter] = useState<'unread' | 'all'>('unread')
+  // Previous watermark, kept so an accidental "Mark read" is one tap to undo.
+  const [undoTo, setUndoTo] = useState<number | null>(null)
 
   useEffect(() => {
     let stale = false
@@ -217,6 +264,24 @@ export default function OffendersView({
   }, [days])
 
   const onReplay = (f: HistoryFlight) => onReplayJump(f.day, flagMoment(f), f.hex)
+
+  const all = data?.flights ?? []
+  const unread = useMemo(() => all.filter((f) => flagMoment(f) > readAt), [all, readAt])
+  const visible = filter === 'unread' ? unread : all
+  const offenders = useMemo(() => aggregate(visible), [visible])
+
+  function markRead() {
+    const now = Math.floor(Date.now() / 1000)
+    setUndoTo(readAt)
+    setReadAt(now)
+    saveReadAt(now)
+  }
+  function undoMarkRead() {
+    if (undoTo == null) return
+    setReadAt(undoTo)
+    saveReadAt(undoTo)
+    setUndoTo(null)
+  }
 
   return (
     <div className="space-y-3">
@@ -235,13 +300,57 @@ export default function OffendersView({
           ))}
         </div>
         <button
-          onClick={() => data && download(`flagged-flights-${days}d.csv`, offendersCsv(data.flights))}
-          disabled={!data || data.flights.length === 0}
+          onClick={() =>
+            download(
+              `flagged-flights-${days}d${filter === 'unread' ? '-unread' : ''}.csv`,
+              offendersCsv(visible),
+            )
+          }
+          disabled={visible.length === 0}
           className="shrink-0 rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-300 disabled:opacity-40"
         >
           Export CSV
         </button>
       </div>
+
+      {/* Unread / all, plus the watermark control. Read state is per-device and
+          is only a view filter — nothing is deleted, and "All" always has it. */}
+      {data != null && all.length > 0 && (
+        <div className="flex items-center gap-2">
+          <div className="flex flex-1 rounded-lg border border-slate-700 bg-slate-800/50 p-0.5 text-xs font-medium">
+            {([
+              ['unread', `Unread ${unread.length}`],
+              ['all', `All ${all.length}`],
+            ] as const).map(([k, label]) => (
+              <button
+                key={k}
+                onClick={() => setFilter(k)}
+                className={`flex-1 rounded-md px-2 py-1.5 transition ${
+                  filter === k ? 'bg-sky-500 text-white' : 'text-slate-400'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {undoTo != null ? (
+            <button
+              onClick={undoMarkRead}
+              className="shrink-0 rounded-lg border border-sky-500/50 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-300"
+            >
+              Undo
+            </button>
+          ) : (
+            <button
+              onClick={markRead}
+              disabled={unread.length === 0}
+              className="shrink-0 rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-300 disabled:opacity-40"
+            >
+              Mark read
+            </button>
+          )}
+        </div>
+      )}
 
       {error && (
         <p className="rounded-lg border border-rose-500/40 bg-rose-500/10 p-3 text-sm text-rose-300">
@@ -265,23 +374,37 @@ export default function OffendersView({
           )}
         </p>
       )}
-      {data != null && data.flights.length === 0 && (
+      {data != null && all.length === 0 && (
         <p className="rounded-lg border border-slate-700 bg-slate-800/40 p-4 text-center text-sm text-slate-400">
           No flagged flights in this window. Quiet skies — or a well-behaved airport.
         </p>
       )}
+      {data != null && all.length > 0 && visible.length === 0 && (
+        <div className="rounded-lg border border-slate-700 bg-slate-800/40 p-4 text-center text-sm text-slate-400">
+          <p>
+            Nothing new since {UK_STAMP.format(new Date(readAt * 1000))}
+            {readAt > 0 ? ' UK' : ''}.
+          </p>
+          <button
+            onClick={() => setFilter('all')}
+            className="mt-1.5 font-semibold text-sky-400"
+          >
+            Show all {all.length} →
+          </button>
+        </div>
+      )}
 
-      {data != null && data.offenders.length > 0 && (
+      {data != null && offenders.length > 0 && (
         <>
           <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
             Most flagged · by airframe
           </h3>
           <ul className="space-y-2">
-            {data.offenders.map((o) => (
+            {offenders.map((o) => (
               <OffenderCard
                 key={o.hex}
                 o={o}
-                flights={data.flights}
+                flights={visible}
                 onReplay={onReplay}
                 onComplain={setComplainFor}
               />
@@ -292,7 +415,7 @@ export default function OffendersView({
             All flagged flights
           </h3>
           <ul className="space-y-2">
-            {data.flights.map((f) => (
+            {visible.map((f) => (
               <FlaggedRow key={f.id} f={f} onReplay={onReplay} onComplain={setComplainFor} />
             ))}
           </ul>
