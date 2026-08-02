@@ -10,6 +10,17 @@ on:
         description: 'Worker path to fetch (history + route diagnostics only)'
         required: false
         default: '/api/history/health'
+      summary:
+        description: 'Print a compact summary instead of the full JSON (for big flight lists)'
+        required: false
+        type: boolean
+        default: false
+      probe_provider:
+        description: 'Instead of the Worker, probe a route provider DIRECTLY from this runner (diagnoses whether a block is Worker-egress-specific)'
+        required: false
+        type: choice
+        options: ['', 'hexdb', 'adsbdb']
+        default: ''
   # Also runs when this file itself changes in a PR — which both smoke-tests the
   # workflow and lets an agent trigger a health check before it lands on main.
   pull_request:
@@ -20,9 +31,34 @@ jobs:
   health:
     runs-on: ubuntu-latest
     steps:
+      # Diagnostic only: one request per provider from a GitHub runner (a
+      # different datacenter IP than the Worker's shared egress). If hexdb
+      # answers here but 403s the Worker, the block is Worker-egress-specific;
+      # if it 403s here too, it is blanket datacenter blocking and no
+      # client-side change on our side will help.
+      - name: Probe a route provider directly
+        if: inputs.probe_provider != ''
+        env:
+          PROVIDER: ${{ inputs.probe_provider }}
+        run: |
+          case "$PROVIDER" in
+            hexdb)  URL="https://hexdb.io/api/v1/route/icao/BAW117" ;;
+            adsbdb) URL="https://api.adsbdb.com/v0/callsign/BAW117" ;;
+            *) echo "::error::unknown provider"; exit 1 ;;
+          esac
+          echo "== $PROVIDER : $URL"
+          for UA in "fight-or-flight-monitor/1.0 (community aircraft noise monitor)" "curl/8.5.0"; do
+            code=$(curl -sS --max-time 30 -o /tmp/p.txt -w '%{http_code}' -A "$UA" "$URL" || echo 000)
+            echo "-- UA: $UA"
+            echo "   HTTP $code"
+            head -c 180 /tmp/p.txt; echo; echo
+          done
+
       - name: Fetch from the Worker
+        if: inputs.probe_provider == ''
         env:
           REQ_PATH: ${{ inputs.path || '/api/history/health' }}
+          SUMMARY: ${{ inputs.summary }}
         run: |
           case "$REQ_PATH" in
             /api/history/*) ;;
@@ -34,4 +70,27 @@ jobs:
           esac
           curl -sS --max-time 120 \
             "https://aircraft-complaint-proxy.kieranhj.workers.dev$REQ_PATH" \
-            | python3 -m json.tool
+            > /tmp/resp.json
+          if [ "$SUMMARY" = "true" ]; then
+            # Flight lists run to thousands of lines; print counts instead. Route
+            # coverage is the number we actually check after a backfill.
+            python3 - <<'PY'
+          import json
+          d = json.load(open('/tmp/resp.json'))
+          fl = d.get('flights')
+          if not isinstance(fl, list):
+              print(json.dumps(d, indent=2)[:4000]); raise SystemExit
+          withroute = [f for f in fl if f.get('origin_icao') or f.get('destination_icao')]
+          movements = [f for f in fl if f.get('airport') and f.get('movement')]
+          mv_route = [f for f in movements if f.get('origin_icao') or f.get('destination_icao')]
+          print(f"flights           : {len(fl)}")
+          print(f"with any route    : {len(withroute)}")
+          print(f"airport movements : {len(movements)}")
+          print(f"  of those, routed: {len(mv_route)}")
+          for f in withroute[:12]:
+              print(f"  {f.get('callsign')or'?':10s} {f.get('origin_label')or f.get('origin_icao')or'?':>18s}"
+                    f" -> {f.get('destination_label')or f.get('destination_icao')or'?'}")
+          PY
+          else
+            python3 -m json.tool < /tmp/resp.json
+          fi
