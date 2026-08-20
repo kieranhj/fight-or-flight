@@ -84,12 +84,45 @@ phase's Definition of Done for review.
   map: interpolated positions at a draggable playhead, 5-minute trails, play/pause at
   1–15 replay-minutes per second, tap an aircraft for its state at that moment. See
   [`docs/PHASE-H4-NOTES.md`](./docs/PHASE-H4-NOTES.md).
-- **Offenders & post-hoc complaints (H5).** Repeat offenders aggregated by airframe
-  over any window, every flagged flight with evidence and a jump into replay at the
-  flagged moment, post-hoc complaints prefilled with the logged time and stored flag
+- **"For Review" & post-hoc complaints (H5).** Every auto-flagged flight, aggregated
+  by airframe so repeat appearances stand out, with a jump into replay at the flagged
+  moment, post-hoc complaints prefilled with the logged time and the **stored** flag
   reasons (never auto-sent), and an evidence-grade CSV export. Routes for movements
-  and flagged flights are persisted at rollup. See
+  and flagged flights are persisted at rollup. Named *for review* rather than
+  *offenders*: R2/R3 flags are indicative and want a human look, not a verdict. See
   [`docs/PHASE-H5-NOTES.md`](./docs/PHASE-H5-NOTES.md).
+- **Unread / mark-read.** The flagged list outgrew scrolling, so it carries a
+  device-local "reviewed up to" watermark: **Mark read** draws a line at the current
+  moment and later flights arrive as unread. Nothing is deleted — *All* always shows
+  the full window, and an accidental tap is one **Undo** away.
+- **Farnborough averages.** Stats shows mean movements per weekday and per
+  weekend/bank-holiday day, plus projected weekly and monthly figures. Averages
+  exclude airshow week (which runs under separate consents) while the cumulative
+  totals still include it, because the annual caps count every movement; the
+  projections are labelled as such and each tile shows its sample size.
+- **Complain from anywhere.** The replay card and the recorded-flights sheet both
+  generate complaints, not just the live map and the review list. A replay complaint
+  is about the aircraft *at the playhead* (with its real position); a flights-list
+  complaint cites the stored D1 flags verbatim.
+- **Route-provider fallback chain.** Origin/destination lookups walk
+  `adsbdb → hexdb` rather than pinning one source, with per-provider backoff on a
+  429 or 403 and per-callsign edge caching. Pinning was the actual bug: adsbdb
+  once rate-limited our shared egress, then hexdb began serving a Cloudflare bot
+  challenge to Workers, which silently killed every lookup. Airport display names
+  come from the route response itself, so a blocked name service can no longer
+  downgrade "Shannon (SNN)" to "EINN".
+- **Feed backoff & health metrics.** A feed that refuses us is stood down rather
+  than retried (15 min for 403/401, 5 min for 429, doubling to a 6 h cap), and
+  per-feed health — status, consecutive failures, stand-down expiry and the feed's
+  own error message — is recorded to R2 and surfaced by `/api/history/health`.
+  Before this, a blocked feed was asked 4×/minute indefinitely and nothing recorded
+  why a day came back thin.
+- **Ops workflow.** `.github/workflows/telemetry-health.yml` fetches any
+  `/api/history/*` or route-diagnostic path from the deployed Worker, optionally
+  summarising responses too large for a job log, and can probe a provider
+  **directly** from the runner — which is how a block on the Worker's egress is
+  told apart from a provider simply being down. It is the only way to reach the
+  deployed Worker from an environment that cannot resolve `*.workers.dev`.
 - **Incident-log review.** Import an incident-log CSV (or review your own saved log),
   scroll the list or view it on the map, and tap any entry to re-run the classifier and
   rules **at the logged time** — double-checking what the heuristics decided (owning
@@ -125,27 +158,60 @@ site points at it. One-time setup steps are in the Phase 0 notes.
 ```
 src/
   config/   airports (incl. Blackbushe), corridors (WebTrak swaths), rules,
-            classification, calendar, filters, types, api   (all thresholds live here)
-  lib/      adsb (Worker contract), classify, trajectory, rulesEngine,
-            assess, complaint, geo, aircraft, log, incidentCsv, review, settings, …
+            classification, calendar, filters, permits, types, api
+            (all thresholds and the verified permit caps live here)
+  lib/      adsb (Worker contract), classify, trajectory, rulesEngine, assess,
+            complaint, geo, aircraft, log, incidentCsv, review, settings,
+            history (D1 client), replay, historyComplaint, reviewRead
   components/  NearbyButton, FlightList/Card/Detail, MapView, FlagBadge,
                AirportTag, KindTag, ComplaintModal, IncidentLog,
-               Review{Modal,Map,Detail}, Settings*
+               HistoryModal (stats/flights/replay/review), ReplayView,
+               OffendersView, Review{Modal,Map,Detail}, Settings*
 worker/
-  src/index.ts   Cloudflare Worker: GET /api/nearby (+ /health, /api/history/*), CORS
-  src/capture.ts telemetry recorder (cron: capture → R2, compaction)
+  src/index.ts   Cloudflare Worker: /api/nearby, route lookup + diagnostics,
+                 /api/history/*, CORS
+  src/capture.ts telemetry recorder (cron: capture → R2, compaction, feed health)
+  src/rollup.ts  nightly sessionizer → D1 (flights, flags, daily stats)
   src/shared.ts  upstream feed access shared by proxy + recorder
-  wrangler.toml  cron triggers + R2 binding
-docs/        BUILD-PLAN, PHASE-*-NOTES, DATA-RESEARCH, CORRIDOR-DATA-EXTRACTION,
-             ASCENT-DESCENT-HEURISTIC, data/ (captured WebTrak swaths)
+  wrangler.toml  cron triggers + R2 and D1 bindings
+docs/        BUILD-PLAN, TELEMETRY-CAPTURE-PLAN, PHASE-*-NOTES, DATA-RESEARCH,
+             CORRIDOR-DATA-EXTRACTION, ASCENT-DESCENT-HEURISTIC,
+             ANONYMOUS-HOSTING, data/ (captured WebTrak swaths)
 public/spike.html  Phase 0 in-browser CORS spike
 .github/workflows/  deploy.yml (Pages) · deploy-worker.yml (Wrangler)
+                    telemetry-health.yml (ops: health, trends, feed probes)
 ```
+
+## Feed usage & current status
+
+Everything reaches the community feeds through the Worker, which is the single
+choke-point in front of them.
+
+- **Live app** — one point query per button tap, edge-cached ~8 s. No background
+  polling by default; an opt-in auto-refresh exists in Settings (minimum 10 s).
+- **Recorder** — one point query every 15 s (4/minute) for a single fixed query:
+  `51.2758, −0.7763`, radius 25 nm. That is the whole of it; there is no crawling,
+  no per-aircraft fan-out and no second region.
+- One attempt per feed, primary → fallback, never an immediate retry.
+- A feed that refuses is **backed off, not retried** — 15 min after a 403/401,
+  5 min after a 429, doubling to a 6 h cap.
+- Every upstream request carries a descriptive `User-Agent` naming this repo.
+
+This is a personal, non-commercial project: the data is used to compare
+Farnborough Airport's movements against its published planning conditions, and is
+not resold, redistributed as a feed, or used to build a rival tracker.
+
+> **Status since 13 August 2026:** airplanes.live returns `403` with a request to
+> make contact, so capture runs on adsb.lol alone and recorded volume is well below
+> normal. The recorder now probes airplanes.live roughly four times an hour instead
+> of 240 while that is resolved; per-feed health is visible at
+> `/api/history/health`.
 
 ## Data & attribution
 
 Primary feed [airplanes.live](https://airplanes.live), fallback
-[adsb.lol](https://adsb.lol); route enrichment via [adsbdb.com](https://www.adsbdb.com).
+[adsb.lol](https://adsb.lol); route enrichment via
+[adsbdb.com](https://www.adsbdb.com) with [hexdb.io](https://hexdb.io) as fallback.
 Farnborough corridor geometry from **Farnborough WebTrak** (EMS Brüel & Kjær /
 Envirosuite). All free / non-commercial, no uptime guarantee, used under their terms
 with attribution. Free ADS-B feeds can miss very low or masked aircraft.
