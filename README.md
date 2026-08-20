@@ -211,14 +211,27 @@ these READMEs carry.
 retrieving data "to create or compile … a collection, compilation, database, or
 directory without written permission", and separately prohibit "automated use …
 data mining, robots, or similar data gathering and extraction tools". The recorder
-is exactly that, so it was outside their terms from the day it started; the `403`
-they began returning on 13 August was enforcement, not a rate limit. We stopped
+is exactly that, so it was outside their terms from the day it started. We stopped
 asking rather than knocking more politely. Written permission would be needed to
-use them this way, and re-adding them is a one-line change if it is ever granted.
+use them this way — sponsorship is a billing arrangement, not that permission — and
+re-adding them is a one-line change if it is ever granted.
 
-Capture accordingly ran degraded from 13–20 August (~11,000 records/day against a
-normal ~130,000), and Farnborough movement counts for those days understate
-reality. Per-feed health is visible at `/api/history/health`.
+The `403` they began returning on 13 August was not a rate limit, and was not
+aimed at us in particular: on 20 August they announced to all API users that the
+**free API had been withdrawn entirely**, citing bot abuse, AI scrapers and
+hosting costs up ~300% in 18 months against 2 billion requests a week. Feeders can
+reach the API from the same IP as their receiver, which is no use to a Worker whose
+egress IP is not the receiver's; using it would mean inverting the architecture so
+the receiver queries locally and pushes records outward.
+
+Capture has accordingly run on adsb.lol alone since 13 August, at roughly 11,000
+records/day against ~130,000 before, and ~60 daily Farnborough movements against
+~100. **This is the new baseline, not a passing outage** — adsb.lol simply has
+thinner feeder coverage around EGLF — so counts from 13 August onward understate
+reality and are not comparable with earlier days. The fix is more coverage, not a
+different API: a receiver near the airport feeding adsb.lol improves the feed this
+project is actually licensed to use. Per-feed health is visible at
+`/api/history/health`.
 
 ## Data & attribution
 
