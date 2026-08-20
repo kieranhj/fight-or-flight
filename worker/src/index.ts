@@ -11,7 +11,7 @@
  * The front-end talks ONLY to this Worker (Build Plan §2).
  */
 
-import { USER_AGENT, fetchUpstream, isMilitary, num, str, type RawAircraft } from './shared'
+import { userAgent, setContact, fetchUpstream, isMilitary, num, str, type RawAircraft } from './shared'
 import {
   captureMinute,
   compactHour,
@@ -33,6 +33,9 @@ import {
 export interface Env extends HistoryEnv {
   /** Optional allow-list of front-end origins; '*' if unset. */
   ALLOWED_ORIGIN?: string
+  /** Static-asset binding (wrangler.anon.toml single-origin mode): the Worker
+   * also serves the built PWA; non-API paths fall through to it. */
+  ASSETS?: Fetcher
 }
 
 // ── Exclusion filters ───────────────────────────────────────────────────────
@@ -167,7 +170,7 @@ type ProviderHit = { status: number; route: FlightRoute | null; body: string }
 
 /** Fetch + parse one provider for one callsign. Throws only on network error. */
 async function fetchProvider(provider: RouteProvider, cs: string): Promise<ProviderHit> {
-  const ua = { Accept: 'application/json', 'User-Agent': USER_AGENT }
+  const ua = { Accept: 'application/json', 'User-Agent': userAgent() }
   if (provider === 'hexdb') {
     const res = await fetch(`https://hexdb.io/api/v1/route/icao/${encodeURIComponent(cs)}`, { headers: ua })
     const body = await res.text()
@@ -272,7 +275,7 @@ async function resolveAirport(icao: string, ctx: ExecutionContext): Promise<Airp
   let meta: AirportMeta = { iata: null, name: null }
   try {
     const res = await fetch(`https://hexdb.io/api/v1/airport/icao/${encodeURIComponent(code)}`, {
-      headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
+      headers: { Accept: 'application/json', 'User-Agent': userAgent() },
     })
     if (res.ok) {
       const a = (await res.json()) as { iata?: string; airport?: string }
@@ -498,6 +501,7 @@ async function handleNearby(url: URL, env: Env, ctx: ExecutionContext): Promise<
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    setContact(env.CONTACT)
     const url = new URL(request.url)
 
     if (request.method === 'OPTIONS') {
@@ -549,7 +553,7 @@ export default {
       const upstream = `https://hexdb.io/api/v1/airport/icao/${encodeURIComponent(code)}`
       try {
         const res = await fetch(upstream, {
-          headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
+          headers: { Accept: 'application/json', 'User-Agent': userAgent() },
         })
         const body = await res.text()
         let label: string | null = code
@@ -657,12 +661,20 @@ export default {
       return json({ ok: true, service: 'aircraft-complaint-proxy', phase: 1 }, env)
     }
 
+    // Single-origin mode (wrangler.anon.toml): the Worker also serves the built
+    // PWA. Assets that exist never reach the Worker; anything else that isn't an
+    // API route falls through here for the SPA-style index.html.
+    if (env.ASSETS && !url.pathname.startsWith('/api/')) {
+      return env.ASSETS.fetch(request)
+    }
+
     return json({ error: 'Not found' }, env, 404)
   },
 
   // Telemetry recorder (docs/TELEMETRY-CAPTURE-PLAN.md): which job runs is
   // keyed on the cron expression that fired (must match wrangler.toml).
   async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    setContact(env.CONTACT)
     const t = controller.scheduledTime
     if (controller.cron === '5 * * * *') {
       ctx.waitUntil(compactHour(env, previousHour(t)).catch((e) => console.log(`compactHour: ${e}`)))

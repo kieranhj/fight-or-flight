@@ -33,6 +33,8 @@ export interface CaptureEnv {
   TELEMETRY?: R2Bucket
   /** Test hook: base URL of a stub feed server (see docs/PHASE-H1-NOTES.md). */
   UPSTREAM_BASE?: string
+  /** Optional contact (e.g. alias email) appended to the upstream User-Agent. */
+  CONTACT?: string
 }
 
 // ── Capture parameters ───────────────────────────────────────────────────────

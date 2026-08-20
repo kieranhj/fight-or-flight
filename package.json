@@ -10,7 +10,9 @@
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "worker:dev": "wrangler dev --config worker/wrangler.toml",
-    "worker:deploy": "wrangler deploy --config worker/wrangler.toml"
+    "worker:deploy": "wrangler deploy --config worker/wrangler.toml",
+    "build:anon": "tsc -b && VITE_BASE=/ VITE_WORKER_BASE=same-origin vite build",
+    "worker:deploy:anon": "wrangler deploy --config worker/wrangler.anon.toml"
   },
   "dependencies": {
     "leaflet": "^1.9.4",

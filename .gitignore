@@ -11,6 +11,9 @@ dist-ssr
 # Wrangler / Cloudflare
 .wrangler
 .dev.vars
+# Filled-in anonymous deploy config (real domain + ids) must never be committed;
+# only the .example template is tracked. See docs/ANONYMOUS-HOSTING.md.
+worker/wrangler.anon.toml
 
 # Editor
 .vscode/*
