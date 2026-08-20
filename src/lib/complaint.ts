@@ -97,7 +97,7 @@ export function buildComplaint(
     'Nature of issue:',
     issue,
     '',
-    'These details were captured from public ADS-B data (via airplanes.live / adsb.lol) by a personal monitoring app. Altitude, position and any rule observations are indicative and should be verified against your own radar / WebTrak records. Please could you investigate this movement, confirm whether it was operating within the permitted conditions, and acknowledge this complaint.',
+    'These details were captured from public ADS-B data (via adsb.lol, community open data under ODbL) by a personal monitoring app. Altitude, position and any rule observations are indicative and should be verified against your own radar / WebTrak records. Please could you investigate this movement, confirm whether it was operating within the permitted conditions, and acknowledge this complaint.',
     '',
     'Regards,',
     user.name || '[your name]',

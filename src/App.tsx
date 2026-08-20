@@ -291,7 +291,7 @@ export default function App() {
               ))}
             </ul>
             <p className="mt-3 text-[11px] text-slate-600">
-              Aircraft data via airplanes.live / adsb.lol; routes via hexdb.io; map © OpenStreetMap
+              Aircraft data via adsb.lol (ODbL); routes via adsbdb.com / hexdb.io; map © OpenStreetMap
               contributors. Used under their terms.
             </p>
           </footer>

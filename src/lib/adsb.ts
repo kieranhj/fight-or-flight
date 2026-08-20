@@ -41,7 +41,7 @@ export type FlightRoute = {
 export type NearbyResponse = {
   /** Echoed query for debugging. */
   query: { lat: number; lon: number; radiusNm: number; n: number }
-  /** Upstream source actually used (e.g. 'airplanes.live', 'adsb.lol', 'stub'). */
+  /** Upstream source actually used (e.g. 'adsb.lol', 'stub'). */
   source: string
   /** Server timestamp (ms epoch). */
   generatedAt: number

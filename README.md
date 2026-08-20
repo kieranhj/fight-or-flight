@@ -23,8 +23,8 @@ phase's Definition of Done for review.
 - **Phase 0 — Scaffold & prove the data path: ✅ done.** See
   [`docs/PHASE-0-NOTES.md`](./docs/PHASE-0-NOTES.md) (incl. the CORS spike: direct
   calls work, but the Worker proxy stays the default).
-- **Phase 1 — Nearest-N telemetry (MVP): ✅ done.** Worker calls airplanes.live
-  for real (normalize → filter → sort → trim → ~8s cache → adsb.lol fallback);
+- **Phase 1 — Nearest-N telemetry (MVP): ✅ done.** Worker calls the feed for real
+  (normalize → filter → sort → trim → ~8s cache);
   one tap → GPS → distance-sorted FlightCards. See
   [`docs/PHASE-1-NOTES.md`](./docs/PHASE-1-NOTES.md).
 - **Phase 2 — Map: ✅ done.** Leaflet map with your position + accuracy ring and
@@ -140,7 +140,7 @@ npm run worker:dev     # Worker on http://127.0.0.1:8787
 ```
 
 The dev front-end targets the local Worker by default. Open `/spike.html` to run
-the direct-fetch CORS test against airplanes.live.
+the direct-fetch CORS test against the feed.
 
 ## Build & deploy
 
@@ -192,7 +192,7 @@ choke-point in front of them.
 - **Recorder** — one point query every 15 s (4/minute) for a single fixed query:
   `51.2758, −0.7763`, radius 25 nm. That is the whole of it; there is no crawling,
   no per-aircraft fan-out and no second region.
-- One attempt per feed, primary → fallback, never an immediate retry.
+- One attempt per request, never an immediate retry.
 - A feed that refuses is **backed off, not retried** — 15 min after a 403/401,
   5 min after a 429, doubling to a 6 h cap.
 - Every upstream request carries a descriptive `User-Agent` naming this repo.
@@ -201,17 +201,32 @@ This is a personal, non-commercial project: the data is used to compare
 Farnborough Airport's movements against its published planning conditions, and is
 not resold, redistributed as a feed, or used to build a rival tracker.
 
-> **Status since 13 August 2026:** airplanes.live returns `403` with a request to
-> make contact, so capture runs on adsb.lol alone and recorded volume is well below
-> normal. The recorder now probes airplanes.live roughly four times an hour instead
-> of 240 while that is resolved; per-feed health is visible at
-> `/api/history/health`.
+**Why only adsb.lol.** adsb.lol publishes its data as **open data under ODbL** and
+runs an open API, so systematically retrieving it to compile this archive is the use
+that licence contemplates — with attribution, which the UI, the complaint text and
+these READMEs carry.
+
+**airplanes.live was removed on 20 August 2026, deliberately.** Their
+[terms of use](https://airplanes.live/terms-of-use/) §4 prohibit systematically
+retrieving data "to create or compile … a collection, compilation, database, or
+directory without written permission", and separately prohibit "automated use …
+data mining, robots, or similar data gathering and extraction tools". The recorder
+is exactly that, so it was outside their terms from the day it started; the `403`
+they began returning on 13 August was enforcement, not a rate limit. We stopped
+asking rather than knocking more politely. Written permission would be needed to
+use them this way, and re-adding them is a one-line change if it is ever granted.
+
+Capture accordingly ran degraded from 13–20 August (~11,000 records/day against a
+normal ~130,000), and Farnborough movement counts for those days understate
+reality. Per-feed health is visible at `/api/history/health`.
 
 ## Data & attribution
 
-Primary feed [airplanes.live](https://airplanes.live), fallback
-[adsb.lol](https://adsb.lol); route enrichment via
+Aircraft data from **[adsb.lol](https://adsb.lol)**, community open data under the
+[ODbL](https://opendatacommons.org/licenses/odbl/); route enrichment via
 [adsbdb.com](https://www.adsbdb.com) with [hexdb.io](https://hexdb.io) as fallback.
+(airplanes.live was used until 20 August 2026 — see "Feed usage" above for why it
+is not any more.)
 Farnborough corridor geometry from **Farnborough WebTrak** (EMS Brüel & Kjær /
 Envirosuite). All free / non-commercial, no uptime guarantee, used under their terms
 with attribution. Free ADS-B feeds can miss very low or masked aircraft.
