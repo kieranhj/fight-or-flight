@@ -63,8 +63,20 @@ W=https://aircraft-complaint-proxy.<account>.workers.dev
 curl -s "$W/api/history/stats?from=2026-07-19&to=2026-08-20" \
   | python3 -c 'import json,sys; [print(d["day"]) for d in json.load(sys.stdin)["days"]]' \
   > days.txt
-wc -l days.txt          # expect ~33
+
+# ...plus the LAST day, which will NOT be in that list. See below.
+grep -qx 2026-08-20 days.txt || echo 2026-08-20 >> days.txt
+
+wc -l days.txt          # expect 33: 19 Jul - 20 Aug inclusive
 ```
+
+> **The final day is always missing from the stats list, by construction.**
+> `daily_stats` rows are written by the nightly rollup at 00:15 UTC *the
+> following day*. Pausing the crons stops that rollup, so the day capture
+> stopped on never gets a summary row — and therefore never appears in
+> `days.txt`. The raw telemetry for it is fine and still in R2; only the
+> summary is absent. Always append the pause date by hand, as above, and see
+> "Finish the final day" below for making D1 agree.
 
 ### 1. D1 — the distilled record
 
@@ -110,9 +122,12 @@ done < days.txt
 
 ```bash
 ls -la archive/
-find archive -size -1k          # any zero/tiny file is a failed download
-zcat archive/2026-08-01.ndjson.gz | head -2    # should be JSON objects
+find archive -type f -size -1k                 # any tiny file is a failed download
+zcat archive/2026-08-01.ndjson.gz | head -2    # should be JSON position records
 ```
+
+`-type f` matters: without it `find` also matches the directory itself and you
+get a hit that looks like a failure but is not.
 
 A day listed in `days.txt` but missing here is worth a second look. A day that is
 absent from both is legitimately absent — the recorder went live mid-evening on
@@ -122,6 +137,35 @@ Method A gives decompressed-then-recompressed NDJSON rather than the original R2
 object, so the bytes will not match B. The *content* is the same and it is what
 the replay view consumes. Take both if you want belt and braces; take A if you
 only take one.
+
+Note that method B will **MISS the final day** even though method A gets it: the
+day compaction that writes `raw/YYYY/MM/DD.ndjson.gz` also never ran. Method A
+works because `/api/history/day/…` falls back to merging the `hour/` and
+`minute/` staging objects when no compacted file exists — the same live-merge
+path the replay view uses for "today".
+
+### 4. Finish the final day
+
+Optional, but it makes D1, the app and the archive agree with each other. Without
+it the History tab shows nothing for 20 August while `RECORDING_END` claims the
+archive covers it, and the D1 dump has no flights or flags for that day.
+
+Both endpoints are idempotent GETs on your own Worker, and both still work while
+paused — only `captureMinute()` is gated. **The order is mandatory**: `rollupDay`
+reads the compacted day file and throws `no day file for … (has it been compacted
+yet?)` if compaction has not run.
+
+```bash
+curl -s "$W/api/history/compact?day=2026-08-20"   # hour/ + minute/ -> raw/…gz
+curl -s "$W/api/history/rollup?day=2026-08-20"    # raw/…gz -> D1 flights/flags/stats
+
+# Confirm the row now exists, then re-take the D1 dump so it includes that day.
+curl -s "$W/api/history/stats?from=2026-08-20&to=2026-08-20"
+npx wrangler d1 export foaf-history --remote --output foaf-history-2026-08-20.sql
+```
+
+If you skip this, set `RECORDING_END` to `'2026-08-19'` in
+`src/config/permits.ts` instead, so the app stops claiming a day it cannot show.
 
 **Do not delete the R2 bucket or the D1 database.** They cost nothing at this
 size, they are the only copy of what partial coverage looked like around EGLF
