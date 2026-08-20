@@ -12,6 +12,7 @@ import {
   RECORDING_START,
   RECORDING_END,
   OFFENDER_EXCLUDED_PERIODS,
+  INCOMPLETE_CAPTURE_DAYS,
 } from '../config/permits'
 import { AIRPORTS } from '../config/airports'
 import { fetchRoute, type FlightRoute } from '../lib/adsb'
@@ -91,11 +92,22 @@ function movementText(f: HistoryFlight): string | null {
 
 // ── Stats tab ────────────────────────────────────────────────────────────────
 
-/** Days that run under their own consents (the airshow) are excluded from the
+const inAnyPeriod = (periods: { from: string; to: string }[], day: string) =>
+  periods.some((p) => day >= p.from && day <= p.to)
+
+/** Days that ran under their own consents (the airshow) — excluded from the
  * averages for the same reason they're excluded from the review list: they say
  * nothing about normal operations. */
-const isExcludedDay = (day: string) =>
-  OFFENDER_EXCLUDED_PERIODS.some((p) => day >= p.from && day <= p.to)
+const isConsentExcludedDay = (day: string) => inAnyPeriod(OFFENDER_EXCLUDED_PERIODS, day)
+
+/** Days we barely recorded. The flights are real and stay everywhere else; it is
+ * the per-day RATE that would lie, because the denominator is a full day and the
+ * numerator is a couple of hours' worth. */
+const isPartialDay = (day: string) => inAnyPeriod(INCOMPLETE_CAPTURE_DAYS, day)
+
+/** Why a given day was only partly captured, for the day-detail line. */
+const partialDayLabel = (day: string) =>
+  INCOMPLETE_CAPTURE_DAYS.find((p) => day >= p.from && day <= p.to)?.label ?? 'incomplete recording'
 
 /** Mean weeks in a month, so a monthly projection isn't 4 or 5 depending on luck. */
 const WEEKS_PER_MONTH = 365.25 / 12 / 7 // ≈ 4.35
@@ -107,7 +119,8 @@ type Averages = {
   nonWeekdayDays: number
   week: number | null
   month: number | null
-  excludedDays: number
+  consentDays: number
+  partialDays: number
 }
 
 /** Mean Farnborough movements per day, split by day type, plus projections.
@@ -118,10 +131,15 @@ function computeAverages(days: DailyStat[]): Averages {
   let weekdayMv = 0
   let nonWeekdayDays = 0
   let nonWeekdayMv = 0
-  let excludedDays = 0
+  let consentDays = 0
+  let partialDays = 0
   for (const d of days) {
-    if (isExcludedDay(d.day)) {
-      excludedDays++
+    if (isConsentExcludedDay(d.day)) {
+      consentDays++
+      continue
+    }
+    if (isPartialDay(d.day)) {
+      partialDays++
       continue
     }
     const mv = d.eglf_dep + d.eglf_arr
@@ -144,7 +162,8 @@ function computeAverages(days: DailyStat[]): Averages {
     nonWeekdayDays,
     week,
     month: week != null ? week * WEEKS_PER_MONTH : null,
-    excludedDays,
+    consentDays,
+    partialDays,
   }
 }
 
@@ -275,12 +294,24 @@ function StatsView({
         </div>
         <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
           Weekly and monthly figures are <span className="font-semibold">projections</span> from the
-          daily averages, not observed totals
-          {averages.excludedDays > 0 &&
-            `, and exclude ${averages.excludedDays} airshow day${
-              averages.excludedDays === 1 ? '' : 's'
-            } that ran under separate consents`}
-          .
+          daily averages, not observed totals.
+          {(averages.consentDays > 0 || averages.partialDays > 0) && (
+            <>
+              {' '}
+              Averages exclude
+              {averages.consentDays > 0 &&
+                ` ${averages.consentDays} airshow day${
+                  averages.consentDays === 1 ? '' : 's'
+                } that ran under separate consents`}
+              {averages.consentDays > 0 && averages.partialDays > 0 && ' and'}
+              {averages.partialDays > 0 &&
+                ` ${averages.partialDays} day${
+                  averages.partialDays === 1 ? '' : 's'
+                } the recorder barely captured`}
+              , which are still counted in the totals above — they were observed, they just cannot
+              be averaged.
+            </>
+          )}
         </p>
       </div>
 
@@ -293,16 +324,28 @@ function StatsView({
           {strip.map(({ day, stat }) => {
             const v = stat ? stat.eglf_dep + stat.eglf_arr : 0
             const selected = picked === day
+            // A barely-recorded day draws a short bar, which reads as a quiet
+            // day rather than a missing one. Colour it apart so it cannot be
+            // mistaken for a low traffic count.
+            const partial = isPartialDay(day)
             return (
               <button
                 key={day}
                 onClick={() => setPicked(selected ? null : day)}
-                aria-label={`${dayLabel(day)}: ${stat ? `${v} movements` : 'no data'}`}
+                aria-label={`${dayLabel(day)}: ${
+                  stat ? `${v} movements${partial ? ', partial capture' : ''}` : 'no data'
+                }`}
                 className="group flex h-full flex-1 flex-col items-center justify-end"
               >
                 <div
                   className={`w-full rounded-t ${
-                    !stat ? 'h-px bg-slate-700' : selected ? 'bg-sky-300' : 'bg-sky-500'
+                    !stat
+                      ? 'h-px bg-slate-700'
+                      : partial
+                        ? `border border-dashed border-amber-400/70 ${selected ? 'bg-amber-400/50' : 'bg-amber-500/25'}`
+                        : selected
+                          ? 'bg-sky-300'
+                          : 'bg-sky-500'
                   }`}
                   style={stat ? { height: `${Math.max(4, (v / stripMax) * 100)}%` } : undefined}
                 />
@@ -323,6 +366,12 @@ function StatsView({
                   `${pickedStat.weekend || pickedStat.bank_holiday ? ' · weekend/BH' : ''}` +
                   `${pickedStat.breach_count ? ` · ${pickedStat.breach_count} breach` : ''}`
                 : ' — no data recorded'}
+              {pickedStat && isPartialDay(picked) && (
+                <span className="mt-0.5 block text-amber-400/90">
+                  Partial capture — {partialDayLabel(picked)}. Counted in totals, left out of
+                  averages.
+                </span>
+              )}
             </span>
             {pickedStat && (
               <button
