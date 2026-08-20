@@ -652,9 +652,18 @@ export async function queryFlights(
  * Flagged flights + repeat-offender aggregates over the last `days` days.
  * Grouped by hex (the stable airframe id — callsigns vary per flight).
  */
-export async function queryOffenders(db: D1Database, days: number): Promise<unknown> {
+export async function queryOffenders(
+  db: D1Database,
+  days: number,
+  /** Day the archive ends (env.RECORDING_PAUSED), when recording is stopped.
+   * The window is measured back from there rather than from now — otherwise
+   * "last 7 days" walks off the end of a frozen archive and every review list
+   * empties out, which reads as "nothing to review" rather than "not recording". */
+  endDay?: string,
+): Promise<unknown> {
   await ensureSchema(db)
-  const from = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10)
+  const anchor = endDay ? Date.parse(`${endDay}T23:59:59Z`) : Date.now()
+  const from = new Date(anchor - days * 86_400_000).toISOString().slice(0, 10)
   const flights = await db
     .prepare(
       `SELECT * FROM flights

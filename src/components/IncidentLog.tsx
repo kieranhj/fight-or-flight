@@ -9,12 +9,16 @@ import {
 import { parseIncidentCsv, incidentToRecord, type ReviewRecord } from '../lib/incidentCsv'
 import { formatClock, formatAltitudeFt, formatDistance } from '../lib/format'
 import { useSettings } from './SettingsContext'
-import { RECORDING_START } from '../config/permits'
+import { RECORDING_START, RECORDING_END } from '../config/permits'
 
-/** True when the recorder was already running at the observed moment, so the
- * flight can be jumped to in the History replay. */
+/** True when the recorder was running at the observed moment, so the flight can
+ * be jumped to in the History replay. Bounded at both ends: incidents logged
+ * after recording paused have no track to replay, and offering the jump would
+ * lead to an empty map. */
 function replayable(i: Incident): boolean {
-  return i.hex != null && new Date(i.observedAt).toISOString().slice(0, 10) >= RECORDING_START
+  if (i.hex == null) return false
+  const day = new Date(i.observedAt).toISOString().slice(0, 10)
+  return day >= RECORDING_START && (RECORDING_END == null || day <= RECORDING_END)
 }
 
 function severityDot(sev: string): string {

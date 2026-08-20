@@ -65,10 +65,13 @@ phase's Definition of Done for review.
 - **Map & display.** Per-kind corridor overlay toggles (departure / arrival), an
   optional "re-centre on refresh" toggle, and very-low unknown-category aircraft drawn
   as light rather than full-size.
-- **Continuous telemetry recorder (H1).** The Worker's cron triggers record every
-  aircraft within 25 nm of Farnborough Airport to R2 (15 s cadence, gzipped NDJSON, minute→hour→day
-  compaction) for later analysis: Farnborough movement stats vs permits, day replay,
-  offender tagging. See [`docs/TELEMETRY-CAPTURE-PLAN.md`](./docs/TELEMETRY-CAPTURE-PLAN.md)
+- **Continuous telemetry recorder (H1) — paused since 20 Aug 2026.** The Worker's cron
+  triggers record every aircraft within 25 nm of Farnborough Airport to R2 (15 s cadence,
+  gzipped NDJSON, minute→hour→day compaction) for later analysis: Farnborough movement
+  stats vs permits, day replay, offender tagging. **Capture is now stopped and the
+  19 Jul – 20 Aug 2026 archive kept** — the History features below all still work over
+  it, read-only. See [`docs/RECORDING-PAUSE.md`](./docs/RECORDING-PAUSE.md) for why and
+  how to restart, plus [`docs/TELEMETRY-CAPTURE-PLAN.md`](./docs/TELEMETRY-CAPTURE-PLAN.md)
   and [`docs/PHASE-H1-NOTES.md`](./docs/PHASE-H1-NOTES.md).
 - **Nightly flight summaries (H2).** The nightly cron sessionizes each day's capture
   into D1: one row per flight, EGLF/EGLK movements ground-truthed from on-ground
@@ -189,9 +192,11 @@ choke-point in front of them.
 
 - **Live app** — one point query per button tap, edge-cached ~8 s. No background
   polling by default; an opt-in auto-refresh exists in Settings (minimum 10 s).
-- **Recorder** — one point query every 15 s (4/minute) for a single fixed query:
-  `51.2758, −0.7763`, radius 25 nm. That is the whole of it; there is no crawling,
-  no per-aircraft fan-out and no second region.
+- **Recorder — stopped since 20 August 2026.** It made no upstream requests at all
+  after that date. When running it was one point query every 15 s (4/minute) for a
+  single fixed query — `51.2758, −0.7763`, radius 25 nm — with no crawling, no
+  per-aircraft fan-out and no second region. Restarting it means a receiver first;
+  see [`docs/RECORDING-PAUSE.md`](./docs/RECORDING-PAUSE.md).
 - One attempt per request, never an immediate retry.
 - A feed that refuses is **backed off, not retried** — 15 min after a 403/401,
   5 min after a 429, doubling to a 6 h cap.
@@ -224,14 +229,20 @@ reach the API from the same IP as their receiver, which is no use to a Worker wh
 egress IP is not the receiver's; using it would mean inverting the architecture so
 the receiver queries locally and pushes records outward.
 
-Capture has accordingly run on adsb.lol alone since 13 August, at roughly 11,000
-records/day against ~130,000 before, and ~60 daily Farnborough movements against
-~100. **This is the new baseline, not a passing outage** — adsb.lol simply has
-thinner feeder coverage around EGLF — so counts from 13 August onward understate
-reality and are not comparable with earlier days. The fix is more coverage, not a
-different API: a receiver near the airport feeding adsb.lol improves the feed this
-project is actually licensed to use. Per-feed health is visible at
-`/api/history/health`.
+Capture ran on adsb.lol alone from 13 August, at roughly 11,000 records/day against
+~130,000 before, and ~60 daily Farnborough movements against ~100 — not a passing
+outage but thinner feeder coverage around EGLF, so those days are not comparable
+with earlier ones.
+
+**Recording was then paused on 20 August**, and that thinner week is only half the
+reason. The archive existed to count movements against the 50,000/yr cap, which
+averages ~137/day; the best fortnight we ever recorded measured ~100/day. An
+undercount can miss a breach but can never demonstrate one, so the statistical case
+needed a receiver from the start — 13 August exposed that rather than caused it. The
+per-incident case, which is what the app is for, never needed the archive at all.
+Full reasoning, export procedure and restart checklist:
+[`docs/RECORDING-PAUSE.md`](./docs/RECORDING-PAUSE.md). Recorder state is visible at
+`/api/history/health` (`pausedSince`), along with per-feed health.
 
 ## Data & attribution
 

@@ -19,6 +19,20 @@ export const FARNBOROUGH_PERMITS = {
 /** First day with recorded telemetry (the recorder went live 21:05 UTC). */
 export const RECORDING_START = '2026-07-19'
 
+/**
+ * Last day with recorded telemetry, or null while the recorder is running.
+ *
+ * Recording was paused on 2026-08-20 (see docs/RECORDING-PAUSE.md). The archive
+ * is kept and stays browsable — this bounds it, so the History screens read as a
+ * closed record rather than a live one that stopped updating: no trailing run of
+ * empty days in the chart, no replay opening on a blank "today", and no incident
+ * offering a jump to a replay that was never recorded.
+ *
+ * Set back to null when capture resumes (alongside the crons in
+ * worker/wrangler.toml and the RECORDING_PAUSED var).
+ */
+export const RECORDING_END: string | null = '2026-08-20'
+
 /** Date ranges (inclusive, UTC days) excluded from the Offenders list. The
  * Farnborough International Airshow operates under its own consents, so flights
  * in show week — including the arrivals weekend before and exodus after — are

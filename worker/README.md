@@ -11,7 +11,7 @@ and keeps room for server-side route enrichment and future API keys.
 | `GET` | `/api/nearby?lat&lon&radius&n` | Nearest aircraft: normalize → filter → sort → trim → route-enrich. CORS. |
 | `GET` | `/api/route-lookup?callsign=BAW117` | Cached route lookup used by the app and the nightly rollup. |
 | `GET` | `/api/route?callsign=BAW117` | Diagnostic: probes every route provider fresh and reports each. |
-| `GET` | `/api/history/health` | Recorder status: last capture, per-feed health/backoff, yesterday's summary. |
+| `GET` | `/api/history/health` | Recorder status: `pausedSince`, last capture, per-feed health/backoff, yesterday's summary. |
 | `GET` | `/api/history/compact?hour=…\|day=…` | Run a compaction stage by hand (idempotent; ops/backfill). |
 | `GET` | `/api/history/rollup?day=…` | Sessionize a day's capture into D1 (idempotent; runs nightly). |
 | `GET` | `/api/history/flights?day=…` | A day's flights + rule flags (`&airport=EGLF`, `&flagged=1`). |
@@ -21,7 +21,18 @@ and keeps room for server-side route enrichment and future API keys.
 | `GET` | `/health` | Liveness JSON. |
 | `OPTIONS` | `*` | CORS preflight (204). |
 
-## Telemetry recorder
+## Telemetry recorder — PAUSED since 2026-08-20
+
+**Capture is stopped; the archive is kept.** The crons are commented out in
+`wrangler.toml` and `RECORDING_PAUSED` is set, so `captureMinute()` refuses to run
+and `/api/history/health` reports `pausedSince`. Every read endpoint still serves
+the 19 Jul – 20 Aug 2026 archive, and `/api/nearby` — the app's actual job — is
+untouched. The reason is coverage: the caps this was built to test average ~137
+movements/day and our best fortnight measured ~100, so the count could never
+demonstrate a breach. See [`docs/RECORDING-PAUSE.md`](../docs/RECORDING-PAUSE.md)
+for the full reasoning, how to export the archive, and how to restart.
+
+The rest of this section describes the recorder as it runs when enabled.
 
 `src/capture.ts` + the cron triggers in `wrangler.toml` continuously record all
 aircraft within 25 nm of Farnborough Airport to the `foaf-telemetry` R2 bucket (15 s cadence,

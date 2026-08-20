@@ -1,4 +1,5 @@
 import { WORKER_BASE } from '../config/api'
+import { RECORDING_END } from '../config/permits'
 
 // Client for the Worker's /api/history endpoints (recorded telemetry, Phase H2+).
 // Shapes mirror the D1 rows written by worker/src/rollup.ts; SQLite booleans
@@ -125,4 +126,14 @@ export async function fetchOffenders(days: number): Promise<OffendersResponse> {
 /** Today's UTC date (the recorder's day boundary), YYYY-MM-DD. */
 export function todayUtc(): string {
   return new Date().toISOString().slice(0, 10)
+}
+
+/**
+ * Last day the archive can hold data for: the pause date while recording is
+ * stopped, otherwise today. Every History screen should end its range here
+ * rather than at `todayUtc()`, so a paused archive presents as finished instead
+ * of as a live feed that has gone quiet.
+ */
+export function recordingEnd(): string {
+  return RECORDING_END ?? todayUtc()
 }

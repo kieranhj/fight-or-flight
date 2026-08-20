@@ -602,7 +602,7 @@ export default {
     if (url.pathname === '/api/history/offenders') {
       if (!env.HISTORY) return json({ error: 'HISTORY D1 binding not configured' }, env, 500)
       const days = clamp(Math.trunc(Number(url.searchParams.get('days') ?? '90') || 90), 1, 3650)
-      return json(await queryOffenders(env.HISTORY, days), env, 200, 60)
+      return json(await queryOffenders(env.HISTORY, days, env.RECORDING_PAUSED), env, 200, 60)
     }
 
     // Full NDJSON track file for one UTC day, for the replay view. Compacted
