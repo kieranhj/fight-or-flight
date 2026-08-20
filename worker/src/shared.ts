@@ -4,7 +4,7 @@
 /** Sent on every upstream request so feed operators can identify / contact us. */
 export const USER_AGENT = 'fight-or-flight (+github.com/kieranhj/fight-or-flight)'
 
-/** Loose shape of an ADSBExchange-v2 aircraft record (airplanes.live / adsb.lol). */
+/** Loose shape of an ADSBExchange-v2 aircraft record (as served by adsb.lol). */
 export type RawAircraft = Record<string, unknown>
 
 export function num(v: unknown): number | null {
@@ -23,8 +23,22 @@ export function isMilitary(ac: RawAircraft): boolean {
   return typeof flags === 'number' && (flags & 1) === 1
 }
 
+// FEEDS WE ARE PERMITTED TO USE THIS WAY.
+//
+// adsb.lol publishes its data as open data under ODbL and runs an open API, so
+// systematically retrieving it to compile our archive is exactly the use the
+// licence contemplates — provided we attribute it, which the UI and READMEs do.
+//
+// airplanes.live is deliberately ABSENT. Their terms of use (§4 Prohibited
+// Activities) forbid systematically retrieving data "to create or compile,
+// directly or indirectly, a collection, compilation, database, or directory
+// without written permission from us", and separately forbid "automated use of
+// the system ... data mining, robots, or similar data gathering and extraction
+// tools". The recorder is precisely that, so it was outside their terms from the
+// day it started — the 403 they began returning on 2026-08-13 was enforcement,
+// not a rate limit. We stop asking rather than knock more politely. If written
+// permission is ever granted, re-adding it is one line.
 const UPSTREAMS = [
-  { source: 'airplanes.live', url: (la: number, lo: number, r: number) => `https://api.airplanes.live/v2/point/${la}/${lo}/${r}` },
   { source: 'adsb.lol', url: (la: number, lo: number, r: number) => `https://api.adsb.lol/v2/point/${la}/${lo}/${r}` },
 ] as const
 

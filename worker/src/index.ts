@@ -2,7 +2,7 @@
  * Fight or Flight — Cloudflare Worker data proxy.
  *
  * `GET /api/nearby?lat&lon&radius&n`
- *   1. calls api.airplanes.live point endpoint (fallback: api.adsb.lol),
+ *   1. calls api.adsb.lol point endpoint (open data, ODbL),
  *   2. drops military / rotorcraft / light-GA via exclusion filters,
  *   3. normalizes ADSBExchange-v2 fields to NormalizedFlight,
  *   4. sorts by distance, trims to N,
@@ -411,7 +411,7 @@ function routeLookupFn(ctx: ExecutionContext): RouteLookupFn {
 // Responsible use: ONE attempt per feed, primary→fallback, no immediate retry.
 // When both blip, we serve the 5-minute stale copy instead of generating load.
 // Combined with the tap-only model and the ~8s edge cache, this keeps us well
-// within airplanes.live's ~1 req/s, non-commercial terms.
+// well within adsb.lol's open-API usage.
 function clamp(n: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, n))
 }
@@ -428,7 +428,7 @@ async function handleNearby(url: URL, env: Env, ctx: ExecutionContext): Promise<
   if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
     return json({ error: 'lat and lon query params are required and must be valid coordinates' }, env, 400)
   }
-  // airplanes.live allows up to 250 nm; keep N sane.
+  // The feed allows a generous radius; keep N sane.
   const radiusNm = clamp(Number(url.searchParams.get('radius') ?? '10') || 10, 1, 250)
   const n = clamp(Math.trunc(Number(url.searchParams.get('n') ?? '8') || 8), 1, 50)
   const filterOpts: FilterOpts = {

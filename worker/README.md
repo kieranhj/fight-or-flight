@@ -56,8 +56,8 @@ none — coverage around Farnborough is only a few percent of movements.
 `GET /api/route` probes every candidate provider so a working one can be chosen.
 
 Phase 1 replaces the `/api/nearby` stub body with a real call to
-`api.airplanes.live/v2/point/{lat}/{lon}/{radius}`: normalize fields, sort by
-distance, apply exclusion filters, cache ~8s, and fall back to `adsb.lol` on error.
+`api.adsb.lol/v2/point/{lat}/{lon}/{radius}`: normalize fields, sort by distance,
+apply exclusion filters and cache ~8s.
 
 ## Develop
 
@@ -80,8 +80,8 @@ Optionally lock CORS to your Pages origin via `ALLOWED_ORIGIN` in `wrangler.toml
 
 ## Responsible use of the community feeds
 
-The data comes from free, volunteer-run, **non-commercial** feeds
-([airplanes.live](https://airplanes.live) ~1 req/s; [adsb.lol](https://adsb.lol)).
+The data comes from a free, volunteer-run, **non-commercial** feed
+([adsb.lol](https://adsb.lol), open data under ODbL).
 The Worker is the single choke-point in front of them, and is deliberately built
 to be a good citizen:
 
@@ -91,15 +91,18 @@ to be a good citizen:
   (4/minute) for a single fixed location and radius — no crawling, no per-aircraft
   fan-out, no second region. This is the continuous half of the project and is
   stated plainly rather than buried: see "Telemetry recorder" above.
+- **Only against a feed whose terms permit it.** adsb.lol is open data (ODbL) with
+  an open API. airplanes.live was removed on 2026-08-20 because their terms §4
+  forbid systematic retrieval into a database, and automated data-gathering tools,
+  without written permission — see the top-level README.
 - **A refusing feed is backed off, not retried.** 15 min after a 403/401, 5 min
   after a 429, doubling to a 6 h cap, with the reason recorded in
   `/api/history/health`.
 - **~8s edge cache.** Repeated taps from the same area reuse a cached result
   (Cache API key + `cf.cacheTtl`), so identical queries don't re-hit upstream.
-- **One attempt per feed, no aggressive retry.** Each request makes a single
-  primary call (airplanes.live), falling back to adsb.lol only if it fails. We
-  never immediately re-hit a feed that just errored — especially not a `429`.
-- **Stale-on-error, not retry-storms.** When both feeds blip, we serve the last
+- **One attempt, no aggressive retry.** Each request makes a single call; we never
+  immediately re-hit a feed that just errored — especially not a `429`.
+- **Stale-on-error, not retry-storms.** When the feed blips, we serve the last
   good result (≤ 5 min) instead of generating more load.
 - **Identifiable + attributed.** Every upstream request sends a descriptive
   `User-Agent` with this repo's URL, and the UI credits both feeds.

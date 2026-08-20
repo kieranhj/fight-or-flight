@@ -29,4 +29,4 @@ export const NEARBY_DEFAULTS = {
  * In production the Worker calls this server-side; the front-end never does.
  */
 export const SPIKE_DIRECT_URL = (lat: number, lon: number, radiusNm: number) =>
-  `https://api.airplanes.live/v2/point/${lat}/${lon}/${radiusNm}`
+  `https://api.adsb.lol/v2/point/${lat}/${lon}/${radiusNm}`
