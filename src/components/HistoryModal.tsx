@@ -3,10 +3,16 @@ import {
   fetchStats,
   fetchDayFlights,
   todayUtc,
+  recordingEnd,
   type DailyStat,
   type HistoryFlight,
 } from '../lib/history'
-import { FARNBOROUGH_PERMITS, RECORDING_START, OFFENDER_EXCLUDED_PERIODS } from '../config/permits'
+import {
+  FARNBOROUGH_PERMITS,
+  RECORDING_START,
+  RECORDING_END,
+  OFFENDER_EXCLUDED_PERIODS,
+} from '../config/permits'
 import { AIRPORTS } from '../config/airports'
 import { fetchRoute, type FlightRoute } from '../lib/adsb'
 import { formatAltitudeFt } from '../lib/format'
@@ -37,6 +43,16 @@ function dayLabel(day: string): string {
   return new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Europe/London',
     weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+  }).format(new Date(`${day}T12:00:00Z`))
+}
+
+/** Same day, without the weekday — for date ranges, where two weekdays in one
+ * phrase ("Sun, 19 Jul–Thu, 20 Aug") is noise rather than information. */
+function dayLabelShort(day: string): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London',
     day: 'numeric',
     month: 'short',
   }).format(new Date(`${day}T12:00:00Z`))
@@ -192,7 +208,9 @@ function StatsView({
   const strip = useMemo(() => {
     const byDay = new Map(days.map((d) => [d.day, d]))
     const out: { day: string; stat: DailyStat | null }[] = []
-    const end = new Date(`${todayUtc()}T00:00:00Z`)
+    // Ends at the archive's last day, not today: with recording paused, anchoring
+    // on today would slide the whole window past the data and show 14 blanks.
+    const end = new Date(`${recordingEnd()}T00:00:00Z`)
     for (let i = 13; i >= 0; i--) {
       const d = new Date(end.getTime() - i * 86_400_000).toISOString().slice(0, 10)
       out.push({ day: d, stat: byDay.get(d) ?? null })
@@ -269,7 +287,7 @@ function StatsView({
       {/* Farnborough movements per day, last 14 days. Single series; tap a bar to inspect. */}
       <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-3">
         <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-slate-500">
-          Farnborough movements · last 14 days
+          Farnborough movements · {RECORDING_END ? 'final 14 days' : 'last 14 days'}
         </div>
         <div className="flex h-24 items-end gap-1" role="img" aria-label="Daily Farnborough movement counts">
           {strip.map(({ day, stat }) => {
@@ -319,9 +337,13 @@ function StatsView({
       </div>
 
       <p className="text-[11px] leading-relaxed text-slate-500">
-        Counts are <span className="font-semibold">minimums</span>: recording began{' '}
-        {dayLabel(RECORDING_START)} 2026 and community-feed coverage can miss the lowest part of a
-        movement, while the caps apply to full calendar years. {FARNBOROUGH_PERMITS.sourceNote}
+        Counts are <span className="font-semibold">minimums</span>, and are not a compliance
+        measurement: they cover {dayLabelShort(RECORDING_START)}
+        {RECORDING_END ? ` – ${dayLabelShort(RECORDING_END)}` : ' onwards'} 2026 while the caps
+        apply to full calendar years, and community-feed coverage misses movements it never saw — at best
+        this recorder averaged around 100 a day against the ~137 the annual cap implies. An
+        undercount can miss a breach; it cannot demonstrate one.{' '}
+        {FARNBOROUGH_PERMITS.sourceNote}
       </p>
     </div>
   )
@@ -675,7 +697,7 @@ export default function HistoryModal({
   const [error, setError] = useState<string | null>(null)
   const [day, setDay] = useState<string | null>(null)
   // Replay can show today even before its first nightly rollup (live-merged).
-  const [replayDay, setReplayDay] = useState<string>(initialReplay?.day ?? todayUtc())
+  const [replayDay, setReplayDay] = useState<string>(initialReplay?.day ?? recordingEnd())
   // Set when jumping from a flagged flight: opens replay at that moment with
   // the airframe highlighted.
   const [replayAt, setReplayAt] = useState<number | null>(initialReplay?.at ?? null)
@@ -693,7 +715,7 @@ export default function HistoryModal({
   }
 
   useEffect(() => {
-    fetchStats(RECORDING_START, todayUtc())
+    fetchStats(RECORDING_START, recordingEnd())
       .then((d) => {
         const sorted = [...d].sort((a, b) => (a.day < b.day ? 1 : -1))
         setDays(sorted)
@@ -721,6 +743,13 @@ export default function HistoryModal({
               Close
             </button>
           </div>
+          {RECORDING_END && (
+            <p className="mt-2 rounded-lg border border-slate-700 bg-slate-800/60 px-2.5 py-1.5 text-[11px] leading-relaxed text-slate-400">
+              <span className="font-semibold text-slate-300">Recording paused.</span> A closed
+              archive covering {dayLabelShort(RECORDING_START)} – {dayLabelShort(RECORDING_END)}{' '}
+              2026. Live identification is unaffected.
+            </p>
+          )}
           <div className="mt-3 flex rounded-lg border border-slate-700 bg-slate-800/50 p-1 text-sm font-medium">
             {(['stats', 'flights', 'replay', 'offenders'] as const).map((t) => (
               <button
@@ -747,8 +776,9 @@ export default function HistoryModal({
           )}
           {days != null && days.length === 0 && tab !== 'replay' && (
             <p className="rounded-lg border border-slate-700 bg-slate-800/40 p-4 text-center text-sm text-slate-400">
-              No summaries yet — the recorder's first nightly rollup lands just after midnight UTC.
-              Today's flying is already watchable in the Replay tab.
+              {RECORDING_END
+                ? 'No recorded summaries available. Recording is paused; live identification is unaffected.'
+                : "No summaries yet — the recorder's first nightly rollup lands just after midnight UTC. Today's flying is already watchable in the Replay tab."}
             </p>
           )}
           {days != null && days.length > 0 && (
@@ -795,7 +825,12 @@ export default function HistoryModal({
                   setReplayFocus(null)
                 }}
                 options={[
-                  ...(days.some((d) => d.day === todayUtc()) ? [] : [{ day: todayUtc(), note: 'so far' }]),
+                  // "Today · so far" replays the staging area before the nightly
+                  // rollup. Nothing is staged while recording is paused, so the
+                  // option is dropped rather than opening on an empty map.
+                  ...(RECORDING_END || days.some((d) => d.day === todayUtc())
+                    ? []
+                    : [{ day: todayUtc(), note: 'so far' }]),
                   ...days.map((d) => ({ day: d.day })),
                 ]}
               />

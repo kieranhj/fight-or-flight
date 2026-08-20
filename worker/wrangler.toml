@@ -5,14 +5,40 @@ compatibility_date = "2024-12-01"
 # Deploy with:  npm run worker:deploy   (wrangler deploy --config worker/wrangler.toml)
 # Local dev:    npm run worker:dev       (serves on http://127.0.0.1:8787)
 
+# ── RECORDER PAUSED — 2026-08-20 ─────────────────────────────────────────────
+# Capture is paused, NOT deleted. The archive stays in R2 and D1 and every read
+# endpoint keeps serving it; only new capture stops. Re-enabling is uncommenting
+# the two lines below, clearing RECORDING_PAUSED, and redeploying — see
+# docs/RECORDING-PAUSE.md for the full procedure, including what to export first
+# and what has to be true before it is worth restarting.
+#
+# Why: the archive existed to count movements against Farnborough's 50,000/yr
+# cap — an average of ~137/day. Our best-coverage fortnight measured ~100/day,
+# so the count was never defensible: an undercount can fail to show a breach but
+# can never demonstrate one. Losing airplanes.live on 13 August exposed that
+# rather than caused it. On-demand identification — which aircraft is overhead,
+# how low, in or out of corridor — is what the app is actually for, and needs no
+# recorder at all.
+#
 # Telemetry recorder (docs/TELEMETRY-CAPTURE-PLAN.md). Requires the Workers Paid
 # plan (compaction needs more than the free 10 ms CPU) and the R2 bucket to exist
 # BEFORE deploying:  npx wrangler r2 bucket create foaf-telemetry
 #   * * * * *   capture: poll feeds 4x/min, write minute object to R2
 #   5 * * * *   compact previous UTC hour's minute objects into an hour file
 #   15 0 * * *  merge previous UTC day's hour files into the day file
-[triggers]
-crons = ["* * * * *", "5 * * * *", "15 0 * * *"]
+# [triggers]
+# crons = ["* * * * *", "5 * * * *", "15 0 * * *"]
+
+[vars]
+# The day capture stopped. Set = paused: /api/history/health reports it, so a
+# recorder that is deliberately off reads as "paused" rather than "broken", and
+# captureMinute() refuses to run even if a cron or a manual invoke reaches it —
+# a frozen archive should not gain a stray minute months later. Clear this (and
+# uncomment [triggers] above) to resume.
+RECORDING_PAUSED = "2026-08-20"
+
+# Optionally lock CORS to your Pages origin once known, e.g.
+# ALLOWED_ORIGIN = "https://kieranhj.github.io"
 
 [[r2_buckets]]
 binding = "TELEMETRY"
@@ -27,7 +53,3 @@ bucket_name = "foaf-telemetry"
 binding = "HISTORY"
 database_name = "foaf-history"
 database_id = "__FOAF_HISTORY_D1_ID__"
-
-# Optionally lock CORS to your Pages origin once known, e.g.
-# [vars]
-# ALLOWED_ORIGIN = "https://kieranhj.github.io"

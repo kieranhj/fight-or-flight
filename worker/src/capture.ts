@@ -33,6 +33,12 @@ export interface CaptureEnv {
   TELEMETRY?: R2Bucket
   /** Test hook: base URL of a stub feed server (see docs/PHASE-H1-NOTES.md). */
   UPSTREAM_BASE?: string
+  /** Set (to the pause date) when recording is deliberately stopped — see
+   * docs/RECORDING-PAUSE.md. Capture refuses to run; reads are unaffected. The
+   * crons are commented out too, so this is the second lock rather than the
+   * only one: it stops a manual invoke or a stray trigger appending a lone
+   * minute to an archive that is supposed to be frozen. */
+  RECORDING_PAUSED?: string
 }
 
 // ── Capture parameters ───────────────────────────────────────────────────────
@@ -256,6 +262,10 @@ function noteAttempt(
 
 // ── Capture: one cron invocation = one minute = SAMPLES_PER_MINUTE polls ─────
 export async function captureMinute(env: CaptureEnv, scheduledTime: number): Promise<void> {
+  if (env.RECORDING_PAUSED) {
+    console.log(`capture: paused since ${env.RECORDING_PAUSED} — not recording`)
+    return
+  }
   const feeds = await loadFeedState(env)
   const before = healthSignature(feeds)
   const startedAt = Math.round(Date.now() / 1000)
@@ -501,7 +511,12 @@ export async function captureHealth(env: CaptureEnv, now: number): Promise<unkno
   ])
   const lastT = (last as { t?: number } | null)?.t ?? null
   return {
-    recording: lastT != null && now - lastT < 5 * 60_000, // captured within 5 min
+    recording: !env.RECORDING_PAUSED && lastT != null && now - lastT < 5 * 60_000, // within 5 min
+    // Set when capture was stopped deliberately. Without this a paused recorder
+    // and a broken one look identical from here — `recording: false` and a
+    // last capture that keeps receding — and the archive's own end date is the
+    // thing you need in order to read the numbers correctly.
+    pausedSince: env.RECORDING_PAUSED ?? null,
     lastCapture: last,
     // Per-feed health: which feeds are serving us, which are standing down and
     // why, and what they said. A thin day shows its cause here.
