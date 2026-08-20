@@ -9,8 +9,9 @@ and keeps room for server-side route enrichment and future API keys.
 | Method | Path | Behaviour |
 |---|---|---|
 | `GET` | `/api/nearby?lat&lon&radius&n` | Nearest aircraft: normalize → filter → sort → trim → route-enrich. CORS. |
-| `GET` | `/api/route?callsign=BAW117` | Diagnostic: the origin/destination we resolve for a callsign. |
-| `GET` | `/api/history/health` | Telemetry recorder status: last capture + yesterday's summary. |
+| `GET` | `/api/route-lookup?callsign=BAW117` | Cached route lookup used by the app and the nightly rollup. |
+| `GET` | `/api/route?callsign=BAW117` | Diagnostic: probes every route provider fresh and reports each. |
+| `GET` | `/api/history/health` | Recorder status: last capture, per-feed health/backoff, yesterday's summary. |
 | `GET` | `/api/history/compact?hour=…\|day=…` | Run a compaction stage by hand (idempotent; ops/backfill). |
 | `GET` | `/api/history/rollup?day=…` | Sessionize a day's capture into D1 (idempotent; runs nightly). |
 | `GET` | `/api/history/flights?day=…` | A day's flights + rule flags (`&airport=EGLF`, `&flagged=1`). |
@@ -41,13 +42,18 @@ kept in `state/feeds.json` and surfaced by `GET /api/history/health`, so a thin
 day shows its cause. `state/last.json` also records `attempted` and `expected`
 alongside `samples`, so partial minutes are visible rather than silent.
 
-Routes are looked up per-callsign from a route database (`ROUTE_PROVIDER`, default
-**hexdb.io**) and cached at the edge — positive hits for ~6 h, "unknown callsign"
-for ~30 min — with a 5-minute global backoff if the provider 429s us. Raw ADS-B has
-no origin/destination, so this lookup is what populates the route (like FR24).
-Business jets often have no schedule and will show no route. `GET /api/route` probes
-all candidate providers (adsbdb, adsb.lol, hexdb) so a working one can be selected —
-adsbdb rate-limits Cloudflare's shared egress IPs, which is why hexdb is the default.
+Routes are looked up per-callsign from an ordered chain of route databases
+(`ROUTE_PROVIDERS`, currently **adsbdb → hexdb**) and cached at the edge — positive
+hits for ~6 h, "unknown callsign" for ~30 min — with a **per-provider** 5-minute
+backoff on a 429 or 403. Pinning a single provider was the bug: adsbdb once
+rate-limited our shared egress (so hexdb was pinned), then hexdb began serving a
+Cloudflare bot challenge to Workers egress, which silently killed every lookup.
+Airport display names are taken from the route response itself where the provider
+supplies them, so a blocked name service cannot downgrade "Shannon (SNN)" to
+"EINN". Raw ADS-B has no origin/destination, so this lookup is what populates the
+route (like FR24); business jets often have no published schedule and will show
+none — coverage around Farnborough is only a few percent of movements.
+`GET /api/route` probes every candidate provider so a working one can be chosen.
 
 Phase 1 replaces the `/api/nearby` stub body with a real call to
 `api.airplanes.live/v2/point/{lat}/{lon}/{radius}`: normalize fields, sort by
@@ -79,8 +85,15 @@ The data comes from free, volunteer-run, **non-commercial** feeds
 The Worker is the single choke-point in front of them, and is deliberately built
 to be a good citizen:
 
-- **Tap-only, no polling.** The app fetches only when you press the button — there
-  is no background timer or auto-refresh hammering the feeds.
+- **The app is tap-only.** The front-end fetches when you press the button; there is
+  no background timer by default (Settings has an opt-in auto-refresh, min 10 s).
+- **The recorder polls at a fixed, modest rate.** One point query every 15 s
+  (4/minute) for a single fixed location and radius — no crawling, no per-aircraft
+  fan-out, no second region. This is the continuous half of the project and is
+  stated plainly rather than buried: see "Telemetry recorder" above.
+- **A refusing feed is backed off, not retried.** 15 min after a 403/401, 5 min
+  after a 429, doubling to a 6 h cap, with the reason recorded in
+  `/api/history/health`.
 - **~8s edge cache.** Repeated taps from the same area reuse a cached result
   (Cache API key + `cf.cacheTtl`), so identical queries don't re-hit upstream.
 - **One attempt per feed, no aggressive retry.** Each request makes a single
