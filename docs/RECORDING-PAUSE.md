@@ -47,29 +47,81 @@ single minute to a frozen archive months later is a nasty thing to debug.
 Do this **first**, and confirm the files are somewhere that is not Cloudflare. A
 plan downgrade is a bad moment to discover what it takes with it.
 
+There are two independent copies to take, and one thing wrangler cannot do.
+
+**Wrangler has no `r2 object list`** (checked against 3.114.17 — `get`, `put` and
+`delete` are the only object verbs). So there is no way to ask the bucket what it
+holds; the day list has to come from somewhere else. Use the recorder's own
+summaries, which is the list that matters anyway:
+
 ```bash
-# 1. D1 — the distilled record (small; the one to keep if you keep only one)
-npx wrangler d1 export foaf-history --remote --output foaf-history-2026-08-20.sql
+# Your deployed Worker URL — the same one .github/workflows/telemetry-health.yml
+# curls, and the same VITE_WORKER_BASE the built site points at.
+W=https://aircraft-complaint-proxy.<account>.workers.dev
 
-# 2. R2 — the raw day files, the irreplaceable part.
-#    List first so you know what you are expecting, then pull each day.
-npx wrangler r2 object get foaf-telemetry --remote --prefix raw/ --list
-for d in $(seq -w 19 31); do
-  npx wrangler r2 object get "foaf-telemetry/raw/2026/07/$d.ndjson.gz" \
-    --remote --file "archive/2026-07-$d.ndjson.gz" || true
-done
-for d in $(seq -w 01 20); do
-  npx wrangler r2 object get "foaf-telemetry/raw/2026/08/$d.ndjson.gz" \
-    --remote --file "archive/2026-08-$d.ndjson.gz" || true
-done
-
-# 3. Check what you got — roughly a file per day, none of them zero bytes
-ls -la archive/
+# The day list: every day D1 has a summary row for.
+curl -s "$W/api/history/stats?from=2026-07-19&to=2026-08-20" \
+  | python3 -c 'import json,sys; [print(d["day"]) for d in json.load(sys.stdin)["days"]]' \
+  > days.txt
+wc -l days.txt          # expect ~33
 ```
 
-Expect ~33 day files. Days before compaction ran, or days with no capture, are
-legitimately absent — cross-check against the Stats tab's "days recorded" count
-rather than assuming a gap is a failed download.
+### 1. D1 — the distilled record
+
+Small, and the one to keep if you keep only one. It is what every History screen
+reads: flights, rule flags, daily stats.
+
+```bash
+npx wrangler login
+npx wrangler d1 export foaf-history --remote --output foaf-history-2026-08-20.sql
+```
+
+### 2. The raw tracks — the irreplaceable part
+
+Two ways. **Prefer the first**: it needs no Cloudflare credentials at all, works
+from any machine, and tells you day-by-day whether the data is actually there.
+
+```bash
+# A. Via the Worker (no credentials). One NDJSON file per day.
+mkdir -p archive
+while read -r d; do
+  if curl -sf "$W/api/history/day/$d" -o "archive/$d.ndjson"; then
+    gzip -f "archive/$d.ndjson"
+    echo "ok   $d"
+  else
+    echo "MISS $d"      # 404 = no capture recorded for that day
+  fi
+done < days.txt
+```
+
+```bash
+# B. Byte-exact R2 originals (needs `wrangler login`). Note there is NO --remote
+#    flag on `r2 object get` — remote is the default and --local is the opt-in,
+#    which is the reverse of `d1 export`.
+mkdir -p archive-r2
+while read -r d; do
+  y=${d%%-*}; m=$(echo "$d" | cut -d- -f2); dd=${d##*-}
+  npx wrangler r2 object get "foaf-telemetry/raw/$y/$m/$dd.ndjson.gz" \
+    --file "archive-r2/$d.ndjson.gz" || echo "MISS $d"
+done < days.txt
+```
+
+### 3. Check what you got
+
+```bash
+ls -la archive/
+find archive -size -1k          # any zero/tiny file is a failed download
+zcat archive/2026-08-01.ndjson.gz | head -2    # should be JSON objects
+```
+
+A day listed in `days.txt` but missing here is worth a second look. A day that is
+absent from both is legitimately absent — the recorder went live mid-evening on
+19 July, and the last day (20 August) stops at 19:57 UTC.
+
+Method A gives decompressed-then-recompressed NDJSON rather than the original R2
+object, so the bytes will not match B. The *content* is the same and it is what
+the replay view consumes. Take both if you want belt and braces; take A if you
+only take one.
 
 **Do not delete the R2 bucket or the D1 database.** They cost nothing at this
 size, they are the only copy of what partial coverage looked like around EGLF
@@ -103,31 +155,75 @@ untouched — which is the whole reason for exporting at step 1 and not at step 
 
 ## Restarting it
 
-The code is intact and tested; restarting is a revert, not a rebuild. But it is
-only worth doing when the coverage problem is solved, which in practice means a
-receiver:
+The code is intact and tested; restarting is a revert, not a rebuild. But do not
+simply uncomment the crons — **the polling rate has to change too**, and that is
+not a nicety.
+
+### Why 4 requests/minute is no longer viable
+
+The final health check before the pause (`/api/history/health`, 2026-08-20
+21:39 UTC) caught something the daily stats never showed:
+
+```
+"adsb.lol": {
+  "ok": false, "status": 429, "consecutiveFailures": 5,
+  "lastOkAt": 1787255838,      // 19:57 UTC — the last good sample
+  "lastFailAt": 1787260375,    // 21:12 UTC
+  "backoffUntil": 1787265175,  // 80 min stand-down (5 min doubled 4x)
+  "note": "429 Too Many Requests (nginx)"
+}
+```
+
+adsb.lol had begun rate-limiting the recorder at its normal cadence — a single
+point query every 15 s. The last recorded minute took **2 of 4** expected
+samples. So by the end, the constraint was not only *how much the feed could
+see*, it was *how often we were allowed to ask*. A restart at 4/minute would
+walk straight back into this.
+
+(The backoff from PR #59 handled it correctly — five refusals cost five requests
+and an 80-minute stand-down rather than thousands of retries. That machinery is
+worth keeping whatever the new rate is.)
+
+### The order to do it in
+
+Only worth starting once the coverage problem is solved, which in practice means
+a receiver:
 
 1. **Put up an ADS-B receiver and feed adsb.lol.** This is the actual fix. A
    receiver near the airport sees the low and masked traffic a distant community
    feeder cannot, and feeding adsb.lol improves the feed this project is licensed
    to use — for us and for anyone else looking at EGLF. One receiver can feed
    several aggregators at once.
-2. **Measure before trusting.** Run capture for a fortnight and compare daily
+2. **Read from the receiver, not the aggregator.** A local dump1090 serves
+   `/data/aircraft.json` on the LAN with no rate limit and no third party — poll
+   *that* as the primary and treat adsb.lol as a sparse fallback or drop it from
+   capture entirely. This also removes the reason the 429s appeared. It does mean
+   the receiver pushes records outward rather than the Worker pulling them, which
+   is a real architecture change: `captureMinute()` currently assumes it can
+   fetch, and would become an ingest endpoint instead.
+3. **If you do keep polling a public aggregator, slow down.** 4/minute drew a
+   429; something like 1/minute is the place to start, and `SAMPLES_PER_MINUTE`
+   in `worker/src/capture.ts` is the single knob. Watch `/api/history/health`
+   for a week before trusting it — `consecutiveFailures` climbing means the rate
+   is still too high, and `attempted` vs `expected` in `state/last.json` shows
+   partial minutes rather than hiding them.
+4. **Measure before trusting.** Run capture for a fortnight and compare daily
    movements against 137/day. If it is still landing near 100, the count is still
    not defensible and the honest thing is to keep using the data for incidents
    only.
-3. Restore Workers Paid (compaction needs more than the free 10 ms CPU).
-4. Uncomment `[triggers]`/`crons` in `worker/wrangler.toml`, delete the
+5. Restore Workers Paid (compaction needs more than the free 10 ms CPU).
+6. Uncomment `[triggers]`/`crons` in `worker/wrangler.toml`, delete the
    `RECORDING_PAUSED` var, redeploy.
-5. Set `RECORDING_END` back to `null` in `src/config/permits.ts`. This is what
+7. Set `RECORDING_END` back to `null` in `src/config/permits.ts`. This is what
    restores the live-mode History UI: the banner disappears, the 14-day chart
    re-anchors on today, "Today · so far" comes back in the replay picker, and new
    incidents become replay-jumpable again.
-6. Confirm `/api/history/health` shows `recording: true` and a `lastCapture`
-   within five minutes.
+8. Confirm `/api/history/health` shows `recording: true`, a `lastCapture` within
+   five minutes, `attempted` equal to `expected`, and no feed in backoff.
 
 Note the discontinuity that will exist in the data either way: pre-13-August days
-came from a denser feed, 13–20 August from adsb.lol alone, and post-restart days
-from adsb.lol plus a local receiver. Three coverage regimes in one table. Compare
-days within a regime, not across them — the History tab's own footnote says the
-counts are minimums for exactly this reason.
+came from a denser feed, 13–20 August from adsb.lol alone (and rate-limited by
+the end), and post-restart days from a receiver at whatever new cadence you
+choose. Three coverage regimes and two sampling rates in one table. Compare days
+within a regime, not across them — the History tab's own footnote says the counts
+are minimums for exactly this reason.
