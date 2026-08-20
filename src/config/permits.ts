@@ -45,3 +45,29 @@ export const OFFENDER_EXCLUDED_PERIODS: { from: string; to: string; label: strin
     label: 'Farnborough International Airshow 2026 (incl. arrivals & exodus)',
   },
 ]
+
+/**
+ * Days the recorder captured so little that the day's TOTAL is meaningless.
+ *
+ * Distinct from OFFENDER_EXCLUDED_PERIODS, and deliberately not merged with it.
+ * An airshow day is real traffic under different rules, so it is dropped from
+ * the review list as well as the stats. A partial-capture day is the opposite:
+ * the traffic was normal and our instrument failed, so the flights we *did*
+ * record are perfectly valid observations and stay in the review list — it is
+ * only the per-day rate that must not be averaged, because dividing real
+ * movements by a day we barely watched understates every figure derived from it.
+ *
+ * Applied to the averages and their weekly/monthly projections only. Cumulative
+ * totals still include these days: 8 movements were genuinely observed on
+ * 20 August, and the "Farnborough movements" tile is a count of what we saw.
+ */
+export const INCOMPLETE_CAPTURE_DAYS: { from: string; to: string; label: string }[] = [
+  {
+    from: '2026-08-20',
+    to: '2026-08-20',
+    // 8 movements / 2,035 records, against ~55 / ~10,000 on the days either
+    // side. adsb.lol was rate-limiting us into 80-minute stand-downs for much
+    // of the day, and recording was paused at 19:57 UTC.
+    label: 'Partial capture — feed rate-limited, recording paused at 19:57 UTC',
+  },
+]
