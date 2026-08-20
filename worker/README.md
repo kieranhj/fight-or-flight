@@ -29,7 +29,17 @@ the bucket to exist before deploying — see
 [`docs/PHASE-H1-NOTES.md`](../docs/PHASE-H1-NOTES.md) for setup, layout and
 verification, and [`docs/TELEMETRY-CAPTURE-PLAN.md`](../docs/TELEMETRY-CAPTURE-PLAN.md)
 for the full architecture. Set `UPSTREAM_BASE` (e.g. via `--var` in dev) to point
-feed access at a stub server for offline testing.
+feed access at a stub server for offline testing; a comma-separated list stands in
+for the whole primary→fallback chain.
+
+A feed that refuses us is **backed off rather than retried**: 15 min after a
+403/401, 5 min after a 429, 1 min after a transient error, doubling per
+consecutive failure up to 6 h. Without this a blocked feed was asked 4x/minute
+indefinitely — ~5,760 pointless requests a day. Per-feed health (status,
+consecutive failures, stand-down expiry, and the feed's own error message) is
+kept in `state/feeds.json` and surfaced by `GET /api/history/health`, so a thin
+day shows its cause. `state/last.json` also records `attempted` and `expected`
+alongside `samples`, so partial minutes are visible rather than silent.
 
 Routes are looked up per-callsign from a route database (`ROUTE_PROVIDER`, default
 **hexdb.io**) and cached at the edge — positive hits for ~6 h, "unknown callsign"

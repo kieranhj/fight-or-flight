@@ -452,7 +452,7 @@ async function handleNearby(url: URL, env: Env, ctx: ExecutionContext): Promise<
 
   let upstream: { source: string; aircraft: RawAircraft[] }
   try {
-    upstream = await fetchUpstream(lat, lon, radiusNm, env.UPSTREAM_BASE)
+    upstream = await fetchUpstream(lat, lon, radiusNm, { baseOverride: env.UPSTREAM_BASE })
   } catch (err) {
     // Stale-on-error: return the last good data (≤ 5 min old) rather than a 502.
     const stale = await cache.match(staleKey)
