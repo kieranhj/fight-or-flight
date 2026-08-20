@@ -1,4 +1,13 @@
-import { fetchUpstream, isMilitary, num, str, type RawAircraft } from './shared'
+import {
+  fetchUpstream,
+  isMilitary,
+  num,
+  str,
+  UpstreamError,
+  UPSTREAM_NAMES,
+  type RawAircraft,
+  type UpstreamAttempt,
+} from './shared'
 
 // Telemetry recorder (docs/TELEMETRY-CAPTURE-PLAN.md, Phase H1).
 //
@@ -13,6 +22,7 @@ import { fetchUpstream, isMilitary, num, str, type RawAircraft } from './shared'
 //   hour/YYYY/MM/DD/HH.ndjson.gz       hourly cron merges the previous hour
 //   raw/YYYY/MM/DD.ndjson.gz           daily cron merges the previous UTC day
 //   state/last.json                    last successful capture (for /health)
+//   state/feeds.json                   per-feed health + backoff (for /health)
 //   state/day-YYYY-MM-DD.json          per-day summary written at day merge
 //
 // All keys and day boundaries are UTC; the analysis layer (H2+) converts to
@@ -144,18 +154,140 @@ export function minuteKey(ms: number): string {
   return `minute/${y}/${m}/${d}/${h}${min}.ndjson.gz`
 }
 
+// ── Feed health + backoff ────────────────────────────────────────────────────
+// Until now a failing feed was retried 4x every minute forever, and nothing
+// anywhere recorded WHY it failed. That combination cost us a week of thin data
+// after airplanes.live began refusing us: ~5,760 pointless requests a day, and
+// no trace of the 403 to notice it by. Feed state is kept in R2 so it survives
+// between cron invocations (which have no shared memory and may run in
+// different locations).
+
+const FEED_STATE_KEY = 'state/feeds.json'
+
+/** Stand-down after a refusal, by kind. A 403 is a decision rather than a blip,
+ * so back off hard — but keep probing occasionally, or we would never notice
+ * being unblocked. Doubles per consecutive failure up to FEED_BACKOFF_MAX_S. */
+const FEED_BACKOFF_S = { refused: 15 * 60, rateLimited: 5 * 60, transient: 60 }
+const FEED_BACKOFF_MAX_S = 6 * 3600
+
+export type FeedHealth = {
+  ok: boolean
+  /** Last HTTP status seen; null after a network-level failure. */
+  status: number | null
+  consecutiveFailures: number
+  /** Epoch seconds; we leave this feed alone until then. */
+  backoffUntil: number
+  lastOkAt: number | null
+  lastFailAt: number | null
+  /** The feed's own explanation, when it gave one (e.g. "contact us at ..."). */
+  note: string | null
+}
+type FeedState = Record<string, FeedHealth>
+
+const blankHealth = (): FeedHealth => ({
+  ok: true,
+  status: null,
+  consecutiveFailures: 0,
+  backoffUntil: 0,
+  lastOkAt: null,
+  lastFailAt: null,
+  note: null,
+})
+
+/** Only these fields decide whether the state is worth re-writing to R2. */
+const healthSignature = (f: FeedState): string =>
+  Object.entries(f)
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([k, h]) => `${k}:${h.ok}:${h.status}:${h.consecutiveFailures}:${h.backoffUntil}`)
+    .join('|')
+
+async function loadFeedState(env: CaptureEnv): Promise<FeedState> {
+  if (!env.TELEMETRY) return {}
+  try {
+    const obj = await env.TELEMETRY.get(FEED_STATE_KEY)
+    return obj ? ((await obj.json()) as FeedState) : {}
+  } catch {
+    return {}
+  }
+}
+
+/** Fold one attempt into the feed's health, and keep `skip` in step so later
+ * samples in this same minute stop asking a feed that has just refused. */
+function noteAttempt(
+  feeds: FeedState,
+  a: UpstreamAttempt,
+  now: number,
+  skip: Set<string>,
+): void {
+  const prev = feeds[a.source] ?? blankHealth()
+  const ok = a.status != null && a.status >= 200 && a.status < 300
+  if (ok) {
+    feeds[a.source] = {
+      ...prev,
+      ok: true,
+      status: a.status,
+      consecutiveFailures: 0,
+      backoffUntil: 0,
+      lastOkAt: now,
+      note: null,
+    }
+    skip.delete(a.source)
+    return
+  }
+  const fails = prev.consecutiveFailures + 1
+  const base =
+    a.status === 403 || a.status === 401
+      ? FEED_BACKOFF_S.refused
+      : a.status === 429
+        ? FEED_BACKOFF_S.rateLimited
+        : FEED_BACKOFF_S.transient
+  const wait = Math.min(base * 2 ** (fails - 1), FEED_BACKOFF_MAX_S)
+  feeds[a.source] = {
+    ok: false,
+    status: a.status,
+    consecutiveFailures: fails,
+    backoffUntil: now + wait,
+    lastOkAt: prev.lastOkAt,
+    lastFailAt: now,
+    note: a.detail ?? prev.note,
+  }
+  skip.add(a.source)
+}
+
 // ── Capture: one cron invocation = one minute = SAMPLES_PER_MINUTE polls ─────
 export async function captureMinute(env: CaptureEnv, scheduledTime: number): Promise<void> {
+  const feeds = await loadFeedState(env)
+  const before = healthSignature(feeds)
+  const startedAt = Math.round(Date.now() / 1000)
+  // Feeds still serving a stand-down from an earlier minute.
+  const skip = new Set(
+    Object.entries(feeds)
+      .filter(([, h]) => h.backoffUntil > startedAt)
+      .map(([source]) => source),
+  )
+  const bases = env.UPSTREAM_BASE?.split(',').map((b) => b.trim()).filter(Boolean) ?? []
+  const candidates = bases.length
+    ? bases.map((_, i) => (bases.length > 1 ? `override-${i + 1}` : 'override'))
+    : UPSTREAM_NAMES
+
   const lines: string[] = []
   let samplesOk = 0
+  let attempted = 0
   let source: string | null = null
 
   for (let k = 0; k < SAMPLES_PER_MINUTE; k++) {
+    // Nothing left to ask: every feed is standing down. Skipping the remaining
+    // samples is the whole point — it is what stops the hammering.
+    if (candidates.every((c) => skip.has(c))) break
     const target = scheduledTime + k * SAMPLE_INTERVAL_MS
     const wait = target - Date.now()
     if (wait > 0) await new Promise((r) => setTimeout(r, wait))
+    attempted++
     try {
-      const up = await fetchUpstream(CENTER.lat, CENTER.lon, RADIUS_NM, env.UPSTREAM_BASE)
+      const up = await fetchUpstream(CENTER.lat, CENTER.lon, RADIUS_NM, {
+        baseOverride: env.UPSTREAM_BASE,
+        skip,
+      })
       const t = Math.round(Date.now() / 1000)
       for (const ac of up.aircraft) {
         const rec = toCaptureRecord(ac, t)
@@ -163,16 +295,25 @@ export async function captureMinute(env: CaptureEnv, scheduledTime: number): Pro
       }
       samplesOk++
       source = up.source
+      for (const a of up.attempts) noteAttempt(feeds, a, startedAt, skip)
     } catch (err) {
-      // Failed sample = a gap, never a retry-storm. On a rate-limit, stand down
-      // for the REST of the minute too.
-      if (/429/.test(String(err))) break
+      // Failed sample = a gap, never a retry-storm. Every attempt is recorded,
+      // which both backs the feed off and leaves the reason visible in /health.
+      if (err instanceof UpstreamError) {
+        for (const a of err.attempts) noteAttempt(feeds, a, startedAt, skip)
+      }
     }
   }
 
   if (!env.TELEMETRY) {
     console.log('capture: TELEMETRY R2 binding missing — recorded nothing')
     return
+  }
+
+  // Persist feed health before anything else: a minute that captured NOTHING is
+  // exactly the minute whose reason we need, and it writes no other state.
+  if (healthSignature(feeds) !== before) {
+    await env.TELEMETRY.put(FEED_STATE_KEY, JSON.stringify(feeds))
   }
   if (samplesOk === 0) return // total gap this minute; visible later as missing key
 
@@ -184,6 +325,10 @@ export async function captureMinute(env: CaptureEnv, scheduledTime: number): Pro
       t: Date.now(),
       key: minuteKey(scheduledTime),
       samples: samplesOk,
+      // Samples we actually tried: samples < attempted means feeds refused us,
+      // attempted < samplesPerMinute means we stood down early.
+      attempted,
+      expected: SAMPLES_PER_MINUTE,
       records: lines.length,
       bytes: body.byteLength,
       source,
@@ -349,14 +494,18 @@ export async function captureHealth(env: CaptureEnv, now: number): Promise<unkno
   if (!env.TELEMETRY) {
     return { recording: false, reason: 'TELEMETRY R2 binding not configured' }
   }
-  const [last, yesterday] = await Promise.all([
+  const [last, yesterday, feeds] = await Promise.all([
     env.TELEMETRY.get('state/last.json').then((o) => o?.json() ?? null),
     env.TELEMETRY.get(`state/day-${previousDay(now)}.json`).then((o) => o?.json() ?? null),
+    env.TELEMETRY.get(FEED_STATE_KEY).then((o) => o?.json() ?? null),
   ])
   const lastT = (last as { t?: number } | null)?.t ?? null
   return {
     recording: lastT != null && now - lastT < 5 * 60_000, // captured within 5 min
     lastCapture: last,
+    // Per-feed health: which feeds are serving us, which are standing down and
+    // why, and what they said. A thin day shows its cause here.
+    feeds,
     yesterday,
     config: { center: CENTER, radiusNm: RADIUS_NM, samplesPerMinute: SAMPLES_PER_MINUTE, groundKeepNm: GROUND_KEEP_NM },
   }
