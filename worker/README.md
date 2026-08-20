@@ -94,7 +94,9 @@ to be a good citizen:
 - **Only against a feed whose terms permit it.** adsb.lol is open data (ODbL) with
   an open API. airplanes.live was removed on 2026-08-20 because their terms §4
   forbid systematic retrieval into a database, and automated data-gathering tools,
-  without written permission — see the top-level README.
+  without written permission — see the top-level README. Their free API was
+  withdrawn from everyone that same week, so the `403` from 2026-08-13 was the
+  leading edge of a general shutdown rather than a block aimed at this project.
 - **A refusing feed is backed off, not retried.** 15 min after a 403/401, 5 min
   after a 429, doubling to a 6 h cap, with the reason recorded in
   `/api/history/health`.

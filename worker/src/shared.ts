@@ -35,9 +35,10 @@ export function isMilitary(ac: RawAircraft): boolean {
 // without written permission from us", and separately forbid "automated use of
 // the system ... data mining, robots, or similar data gathering and extraction
 // tools". The recorder is precisely that, so it was outside their terms from the
-// day it started — the 403 they began returning on 2026-08-13 was enforcement,
-// not a rate limit. We stop asking rather than knock more politely. If written
-// permission is ever granted, re-adding it is one line.
+// day it started. The 403 from 2026-08-13 was not a rate limit and was not aimed
+// at us: they withdrew the free API from everyone that week. We stop asking rather
+// than knock more politely. If written permission is ever granted, re-adding it is
+// one line.
 const UPSTREAMS = [
   { source: 'adsb.lol', url: (la: number, lo: number, r: number) => `https://api.adsb.lol/v2/point/${la}/${lo}/${r}` },
 ] as const
