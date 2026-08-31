@@ -63,6 +63,16 @@ jobs:
             head -c 200 /tmp/p.txt; echo; echo
             sleep 2
           done
+          # Does the feed allow direct browser calls? If it sends a permissive
+          # Access-Control-Allow-Origin, the front-end can query it from the
+          # user's own device and skip the Worker — which matters when the
+          # Worker's SHARED Cloudflare egress is the thing being rate-limited.
+          if [ -n "$FEED" ]; then
+            echo "-- CORS preflight-ish check (Origin: the Pages site)"
+            curl -sS --max-time 30 -D - -o /dev/null \
+              -H "Origin: https://kieranhj.github.io" "$URL" \
+              | grep -iE '^(HTTP/|access-control-)' || echo "   (no access-control-* headers)"
+          fi
 
       - name: Fetch from the Worker
         if: inputs.probe_provider == ''
