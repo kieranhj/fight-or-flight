@@ -76,11 +76,18 @@ jobs:
             # provider, /api/route-lookup is the cached production path.
             /api/route|/api/route\?*) ;;
             /api/route-lookup\?*) ;;
-            *) echo "::error::path must start with /api/history/ or /api/route"; exit 1 ;;
+            # The app's own live endpoint. Read-only, and the only way to see
+            # what the FEEDS say to the Worker's egress specifically — a feed
+            # that answers a GitHub runner can still refuse Cloudflare, which is
+            # exactly how the hexdb outage presented.
+            /api/nearby|/api/nearby\?*) ;;
+            *) echo "::error::path must start with /api/history/, /api/route or /api/nearby"; exit 1 ;;
           esac
-          curl -sS --max-time 120 \
-            "https://aircraft-complaint-proxy.kieranhj.workers.dev$REQ_PATH" \
-            > /tmp/resp.json
+          # Status matters as much as the body here: a 5xx with a JSON error is
+          # a very different diagnosis from a 200 with an empty flights array.
+          code=$(curl -sS --max-time 120 -o /tmp/resp.json -w '%{http_code}' \
+            "https://aircraft-complaint-proxy.kieranhj.workers.dev$REQ_PATH" || echo 000)
+          echo "HTTP $code  ($(wc -c < /tmp/resp.json) bytes)"
           if [ "$SUMMARY" = "true" ]; then
             # Flight lists run to thousands of lines; print counts instead. Route
             # coverage is the number we actually check after a backfill.
