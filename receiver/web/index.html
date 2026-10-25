@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Local ADS-B</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root { --bg:#f7f7f5; --panel:#fff; --text:#1d1d1b; --muted:#6b6b66; --line:#e3e2dc;
+          --accent:#1f6feb; --stale:#a8a8a0; font-family: system-ui, sans-serif; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#151514; --panel:#1f1f1d; --text:#ecebe6; --muted:#9a9a93; --line:#33332f;
+            --accent:#58a6ff; --stale:#5c5c57; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-size:14px;
+         display:grid; grid-template-rows:auto 1fr; height:100vh; }
+  header { padding:10px 16px; border-bottom:1px solid var(--line); display:flex;
+           flex-wrap:wrap; gap:4px 20px; align-items:baseline; }
+  header h1 { font-size:16px; margin:0 8px 0 0; }
+  .stat { color:var(--muted); font-variant-numeric:tabular-nums; }
+  .stat b { color:var(--text); font-weight:600; }
+  #status.down b { color:#d1242f; }
+  main { display:grid; grid-template-columns: 1fr minmax(320px, 46%); min-height:0; }
+  @media (max-width: 800px) { main { grid-template-columns:1fr; grid-template-rows:45vh 1fr; } }
+  #map { min-height:300px; }
+  #list { overflow:auto; background:var(--panel); border-left:1px solid var(--line); }
+  table { border-collapse:collapse; width:100%; font-variant-numeric:tabular-nums; }
+  th, td { padding:6px 8px; text-align:right; white-space:nowrap; border-bottom:1px solid var(--line); }
+  th { position:sticky; top:0; background:var(--panel); color:var(--muted); font-weight:500; font-size:12px; }
+  th:nth-child(-n+2), td:nth-child(-n+2) { text-align:left; }
+  tr.stale td { color:var(--stale); }
+  tr.sel td { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+  tbody tr { cursor:pointer; }
+  .hex { font-family: ui-monospace, monospace; }
+  .plane { color:var(--accent); font-size:20px; line-height:20px; text-shadow:0 0 2px #fff; }
+  .plane.stale { color:var(--stale); }
+  .empty { padding:24px 16px; color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Local ADS-B</h1>
+  <span class="stat" id="status">feed <b>…</b></span>
+  <span class="stat">aircraft <b id="s-ac">0</b> (<b id="s-pos">0</b> with position)</span>
+  <span class="stat">good msgs <b id="s-rate">0</b>/s</span>
+  <span class="stat">CRC pass <b id="s-crc">–</b></span>
+  <span class="stat">max range <b id="s-range">–</b> NM</span>
+  <span class="stat">up <b id="s-up">0</b></span>
+</header>
+<main>
+  <div id="map"></div>
+  <div id="list">
+    <table>
+      <thead><tr><th>ICAO</th><th>Callsign</th><th>Squawk</th><th>Alt ft</th><th>V/S</th>
+        <th>GS kt</th><th>Trk</th><th>Dist NM</th><th>Msgs</th><th>Seen</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div class="empty" id="empty">Waiting for decoded aircraft…</div>
+  </div>
+</main>
+<script>
+const EGLF = [51.2758, -0.7763];
+const map = L.map('map').setView(EGLF, 9);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  { maxZoom: 15, attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
+L.circleMarker(EGLF, { radius: 4, color: '#888' }).bindTooltip('EGLF').addTo(map);
+
+let receiverLayer = null, outlineLayer = null, selected = null;
+const markers = new Map(), trails = new Map();
+
+const fmt = (v, d = 0) => v == null ? '' : Number(v).toFixed(d);
+const fmtUp = s => s < 3600 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${Math.floor(s / 3600)}h ${Math.floor(s % 3600 / 60)}m`;
+
+function drawReceiver(r) {
+  if (receiverLayer) return;
+  receiverLayer = L.layerGroup().addTo(map);
+  L.circleMarker([r.lat, r.lon], { radius: 5, color: '#d1242f', fillOpacity: 1 })
+    .bindTooltip('Receiver').addTo(receiverLayer);
+  for (const nm of [10, 25, 50, 100])
+    L.circle([r.lat, r.lon], { radius: nm * 1852, color: '#888', weight: 1, fill: false, dashArray: '3 5' })
+      .bindTooltip(`${nm} NM`).addTo(receiverLayer);
+}
+
+function update(data) {
+  const s = data.stats;
+  drawReceiver(data.receiver);
+  if (data.outline.length >= 2) {
+    if (!outlineLayer) outlineLayer = L.polygon([], { color: '#d1242f', weight: 1.5, fillOpacity: 0.06 })
+      .bindTooltip('Coverage: furthest fix per 10� sector').addTo(map);
+    // While some sectors are still empty, close the shape through the receiver so gaps show as gaps.
+    const r = [data.receiver.lat, data.receiver.lon];
+    outlineLayer.setLatLngs(data.outline.length < 36 ? [r, ...data.outline] : data.outline);
+  }
+  document.getElementById('status').className = 'stat';
+  document.getElementById('status').innerHTML = 'feed <b>live</b>';
+  document.getElementById('s-rate').textContent = s.good_per_s;
+  document.getElementById('s-crc').textContent = s.frames ? `${Math.round(100 * s.good / s.frames)}%` : '–';
+  document.getElementById('s-range').textContent = s.max_range_nm || '–';
+  document.getElementById('s-up').textContent = fmtUp(s.uptime_s);
+
+  const ac = data.aircraft;
+  document.getElementById('s-ac').textContent = ac.length;
+  document.getElementById('s-pos').textContent = ac.filter(a => a.lat != null).length;
+  document.getElementById('empty').style.display = ac.length ? 'none' : '';
+
+  const live = new Set();
+  document.getElementById('rows').innerHTML = ac.map(a => {
+    const stale = a.seen > 60;
+    const cls = [stale && 'stale', a.hex === selected && 'sel'].filter(Boolean).join(' ');
+    return `<tr data-hex="${a.hex}" class="${cls}">
+      <td class="hex">${a.hex}</td><td>${a.flight ?? ''}</td><td>${a.squawk ?? ''}</td>
+      <td>${a.alt_baro ?? (a.alt_geom != null ? a.alt_geom + 'g' : '')}</td><td>${a.baro_rate ?? ''}</td>
+      <td>${fmt(a.gs)}</td><td>${fmt(a.track)}</td><td>${fmt(a.r_nm, 1)}</td>
+      <td>${a.messages}</td><td>${fmt(a.seen)}s</td></tr>`;
+  }).join('');
+
+  for (const a of ac) {
+    if (a.lat == null) continue;
+    live.add(a.hex);
+    const stale = a.seen_pos > 60;
+    const icon = L.divIcon({ className: '', iconSize: [20, 20], iconAnchor: [10, 10],
+      html: `<div class="plane${stale ? ' stale' : ''}" style="transform:rotate(${(a.track ?? a.heading ?? 0) - 90}deg)">&#10148;</div>` });
+    const label = `${a.flight || a.hex} · ${a.alt_baro ?? '?'} ft · ${fmt(a.gs) || '?'} kt`;
+    if (!markers.has(a.hex)) {
+      const m = L.marker([a.lat, a.lon], { icon }).bindTooltip(label).addTo(map);
+      m.on('click', () => select(a.hex));
+      markers.set(a.hex, m);
+      trails.set(a.hex, L.polyline([], { weight: 2, opacity: 0.7 }).addTo(map));
+    }
+    markers.get(a.hex).setLatLng([a.lat, a.lon]).setIcon(icon).setTooltipContent(label);
+    trails.get(a.hex).setLatLngs(a.trail.map(p => [p[0], p[1]]));
+  }
+  for (const [hex, m] of markers) if (!live.has(hex)) {
+    m.remove(); trails.get(hex).remove(); markers.delete(hex); trails.delete(hex);
+  }
+}
+
+function select(hex) {
+  selected = selected === hex ? null : hex;
+  for (const [h, t] of trails) t.setStyle({ weight: h === selected ? 4 : 2, opacity: !selected || h === selected ? 0.8 : 0.3 });
+  const m = selected && markers.get(selected);
+  if (m) m.openTooltip();
+}
+
+document.getElementById('rows').addEventListener('click', e => {
+  const tr = e.target.closest('tr');
+  if (!tr) return;
+  select(tr.dataset.hex);
+  const m = markers.get(tr.dataset.hex);
+  if (m) map.panTo(m.getLatLng());
+});
+
+async function poll() {
+  try {
+    const r = await fetch('data/aircraft.json', { cache: 'no-store' });
+    update(await r.json());
+  } catch {
+    document.getElementById('status').className = 'stat down';
+    document.getElementById('status').innerHTML = 'feed <b>down</b>';
+  }
+  setTimeout(poll, 1000);
+}
+poll();
+</script>
+</body>
+</html>

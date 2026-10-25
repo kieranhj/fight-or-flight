@@ -1,0 +1,4 @@
+bin/
+captures/
+__pycache__/
+station.json
