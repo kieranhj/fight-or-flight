@@ -37,6 +37,25 @@
   .plane { color:var(--accent); font-size:20px; line-height:20px; text-shadow:0 0 2px #fff; }
   .plane.stale { color:var(--stale); }
   .empty { padding:24px 16px; color:var(--muted); }
+  #cmp { padding:12px 16px 16px; border-bottom:1px solid var(--line); }
+  #cmp h2 { font-size:14px; margin:0 0 4px; }
+  #cmp .muted, #cmp-status { color:var(--muted); font-size:12px; }
+  #cmp-status.warn { color:#d1242f; }
+  #cmp table { margin:8px 0; }
+  #cmp th { position:static; }
+  #cmp td, #cmp th { padding:4px 6px; text-align:center; }
+  #cmp td:first-child, #cmp th:first-child { text-align:left; }
+  #cmp td.cell { font-weight:600; }
+  #cmp td.cell small { display:block; font-weight:400; color:var(--muted); font-size:11px; }
+  #cmp .big { font-size:22px; font-weight:600; }
+  #cmp form { display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
+  #cmp input { flex:1; min-width:120px; padding:5px 8px; border:1px solid var(--line);
+               background:var(--bg); color:var(--text); border-radius:4px; }
+  #cmp button { padding:5px 10px; border:1px solid var(--accent); background:var(--accent);
+                color:#fff; border-radius:4px; cursor:pointer; }
+  #cmp details { margin-top:8px; }
+  #cmp summary { cursor:pointer; color:var(--muted); font-size:12px; }
+  .miss { color:#d1242f; } .hit { color:#1a7f37; }
 </style>
 </head>
 <body>
@@ -52,6 +71,25 @@
 <main>
   <div id="map"></div>
   <div id="list">
+    <section id="cmp" hidden>
+      <h2>Heard vs adsb.lol <span class="muted" id="cmp-label"></span></h2>
+      <div><span class="big" id="cmp-all">–</span>
+        <span class="muted" id="cmp-all-detail">of aircraft adsb.lol saw near us, we also heard</span></div>
+      <table>
+        <thead id="cmp-head"></thead>
+        <tbody id="cmp-grid"></tbody>
+      </table>
+      <div id="cmp-status"></div>
+      <form id="cmp-form">
+        <input id="cmp-new" placeholder="Name the next test, e.g. loft" maxlength="40">
+        <button>Start new test</button>
+      </form>
+      <details><summary>Last sample</summary><div id="cmp-last" class="muted"></div></details>
+      <details><summary>Previous tests</summary>
+        <table><thead><tr><th>Test</th><th>Length</th><th>All</th><th>N</th><th>&lt;10k ft</th></tr></thead>
+          <tbody id="cmp-past"></tbody></table>
+      </details>
+    </section>
     <table>
       <thead><tr><th>ICAO</th><th>Callsign</th><th>Squawk</th><th>Alt ft</th><th>V/S</th>
         <th>GS kt</th><th>Trk</th><th>Dist NM</th><th>Msgs</th><th>Seen</th></tr></thead>
@@ -88,7 +126,7 @@ function update(data) {
   drawReceiver(data.receiver);
   if (data.outline.length >= 2) {
     if (!outlineLayer) outlineLayer = L.polygon([], { color: '#d1242f', weight: 1.5, fillOpacity: 0.06 })
-      .bindTooltip('Coverage: furthest fix per 10� sector').addTo(map);
+      .bindTooltip('Coverage: furthest fix per 10° sector').addTo(map);
     // While some sectors are still empty, close the shape through the receiver so gaps show as gaps.
     const r = [data.receiver.lat, data.receiver.lon];
     outlineLayer.setLatLngs(data.outline.length < 36 ? [r, ...data.outline] : data.outline);
@@ -163,6 +201,67 @@ async function poll() {
   setTimeout(poll, 1000);
 }
 poll();
+
+// ---- comparison with adsb.lol. The receiver does the (rate-limited) fetching; this only
+// reads the local server, so opening more tabs never adds load on adsb.lol.
+const pctText = c => c.expected ? `${Math.round(100 * c.heard / c.expected)}%` : '–';
+const tint = (h, e) => e ? `background: color-mix(in srgb, ${h / e >= 0.5 ? '#1a7f37' : '#d1242f'} ${Math.round(8 + 22 * Math.abs(h / e - 0.5) * 2)}%, transparent)` : '';
+const dur = s => s < 3600 ? `${Math.round(s / 60)} min` : `${(s / 3600).toFixed(1)} h`;
+const esc = s => String(s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
+
+function updateCompare(c) {
+  const box = document.getElementById('cmp');
+  if (c.disabled) { box.hidden = true; return; }
+  box.hidden = false;
+  const s = c.session, sum = s.summary;
+  document.getElementById('cmp-label').textContent = `· ${s.label} · ${s.samples} samples · ${dur(Date.now() / 1000 - s.started)}`;
+  document.getElementById('cmp-all').textContent = pctText(sum.all);
+  document.getElementById('cmp-all-detail').textContent =
+    `we heard ${sum.all.heard} of the ${sum.all.expected} sightings adsb.lol had within ${c.status.radius_nm} NM (an aircraft counts once per query)`;
+  document.getElementById('cmp-head').innerHTML =
+    `<tr><th>Dir</th>${c.bands.map(b => `<th>${b} ft</th>`).join('')}<th>All</th></tr>`;
+  document.getElementById('cmp-grid').innerHTML = c.sectors.map(sec => {
+    const cells = c.bands.map(b => {
+      const [h, e] = s.grid[sec][b];
+      return `<td class="cell" style="${tint(h, e)}">${e ? pctText({ heard: h, expected: e }) : '·'}<small>${e ? `${h}/${e}` : ''}</small></td>`;
+    }).join('');
+    return `<tr><td>${sec}</td>${cells}<td class="cell">${pctText(sum[sec])}</td></tr>`;
+  }).join('');
+
+  const st = c.status, el = document.getElementById('cmp-status');
+  el.className = st.last_error ? 'warn' : '';
+  el.textContent = st.last_error
+    ? `adsb.lol: ${st.last_error}. Backing off, next try in ${dur(st.next_in_s)}.`
+    : `One adsb.lol query every ${dur(st.interval_s)}${st.last_ok_age_s != null ? `, last ${st.last_ok_age_s}s ago` : ''}, next in ${st.next_in_s}s. ${st.requests} so far.`;
+
+  document.getElementById('cmp-last').innerHTML = c.last_sample.length
+    ? c.last_sample.map(a => `<div><span class="${a.heard ? 'hit' : 'miss'}">${a.heard ? 'heard' : 'missed'}</span>
+        ${esc(a.flight || a.hex)} · ${a.alt} ft · ${a.r_nm} NM ${a.sector}</div>`).join('')
+    : 'No sample yet.';
+  document.getElementById('cmp-past').innerHTML = c.past.slice().reverse().map(p =>
+    `<tr><td>${esc(p.label)}</td><td>${dur(p.ended - p.started)}</td><td>${pctText(p.summary.all)}</td>
+      <td>${pctText(p.summary.N)}</td><td>${pctText({ heard: p.summary['<3k'].heard + p.summary['3–10k'].heard,
+        expected: p.summary['<3k'].expected + p.summary['3–10k'].expected })}</td></tr>`).join('')
+    || '<tr><td colspan="5" class="muted">None yet. Start a new test to save the current one.</td></tr>';
+}
+
+document.getElementById('cmp-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const input = document.getElementById('cmp-new');
+  await fetch('data/compare/reset', { method: 'POST', body: JSON.stringify({ label: input.value }) });
+  input.value = '';
+  pollCompare();
+});
+
+let compareTimer = null;
+async function pollCompare() {
+  clearTimeout(compareTimer);
+  try {
+    updateCompare(await (await fetch('data/compare.json', { cache: 'no-store' })).json());
+  } catch { /* the main feed status already shows when the server is down */ }
+  compareTimer = setTimeout(pollCompare, 5000);
+}
+pollCompare();
 </script>
 </body>
 </html>

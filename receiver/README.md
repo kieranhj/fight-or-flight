@@ -42,3 +42,20 @@ Close SDR#/SDR++ first, because only one program can open the dongle at a time.
   or the gain.
 - DF17 = ADS-B (identity, position, velocity). DF4/20 = altitude replies and DF5/21 = squawk
   replies, both accepted only for aircraft already seen in a clean DF11/17.
+
+## Heard vs adsb.lol (fair antenna tests)
+
+The page's top panel scores us against adsb.lol: of the airborne aircraft it reports within
+30 NM, what share did we also hear in the last 60 s? It's split by direction and altitude band.
+Because it's a share rather than a count, it stays fair whether the sky is busy or quiet.
+
+- **To compare antenna positions**, type a name (e.g. `loft`) and press **Start new test** when
+  you move the antenna. The current test is saved under its name and shows in **Previous
+  tests**, kept in `captures/compare-sessions.jsonl`. Swap positions back and forth, giving
+  each 20+ minutes.
+- **Gentle on adsb.lol** (the Worker's recorder was rate-limited at 4/min, see
+  `docs/RECORDING-PAUSE.md`): the receiver makes **one** query every 2 minutes
+  (`--compare-every`, never under 60 s; `0` turns it off). The browser never calls adsb.lol.
+  Any failure doubles the wait, up to an hour, with no retries, and `Retry-After` is obeyed.
+- Not counted: aircraft on the ground, and adsb.lol entries we couldn't hear directly
+  (TIS-B/ADS-R rebroadcasts, ADS-C).

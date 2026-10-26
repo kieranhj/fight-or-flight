@@ -2,9 +2,11 @@
 *Build our own 1090 MHz ADS-B receiver near Farnborough (EGLF), feed it to the community
 aggregators, and eventually use it as a first-hand data source for Fight or Flight.*
 
-> **Status (October 2026): phase R0 (laptop proof of reception) ✅ done.** The RTL-SDR Blog
-> V3 receives and decodes ADS-B on the Windows laptop with the stock antenna indoors. The test
-> receiver lives in [`../receiver/`](../receiver/README.md). Phases R1 onwards are still to do.
+> **Status (26 Oct 2026):** R0 (laptop proof of reception) ✅ and R1's indoor siting tests ✅
+> are done. **R3: a Raspberry Pi 3B+ running the adsb.im image is decoding**, and **R4: it is
+> feeding adsb.lol, airplanes.live and adsb.fi** with the privacy flag on. Next: PoE power and a
+> high bathroom placement, the 1090MHz UK key, then an outdoor antenna or another site with a
+> view north. The laptop test receiver is in [`../receiver/`](../receiver/README.md).
 
 ---
 
@@ -29,6 +31,8 @@ aggregators, and eventually use it as a first-hand data source for Fight or Flig
 | **Driver** | WinUSB, installed with Zadig. No firmware flashing is needed on a V3; Zadig only swaps the Windows driver. |
 | **Stock antenna** | The telescopic dipole kit. Workable for a first test, but not tuned for 1090 MHz. |
 | **Laptop** | Windows 11, Python 3.13. WSL is not installed (and not needed for R0). |
+| **Raspberry Pi 3 Model B+** | Runs the adsb.im image at `adsb-feeder.local` (see R3). Has a PoE header and built-in Wi-Fi. |
+| **PoE switch** | Existing. Check it is 802.3af/at (standard PoE) before connecting the Pi; see R3. |
 
 ---
 
@@ -97,7 +101,7 @@ Replaying the 3.1-hour capture and binning every position fix by bearing from th
   high enough to be seen over the building get through.
 - **In 3 hours, nothing below about 3,700 ft was decoded from any direction.** Farnborough
   arrivals, departures and circuits are below that, so **this site cannot yet see the traffic
-  the app is about.**
+  the app is about.** The overnight run, below, lowered that to about 3,000 ft, but no further.
 - Cross-check (25 Oct, about 22:40): at a quiet time, 34 aircraft were airborne within 60 NM on
   adsb.lol. Most were in the Heathrow flow to the N/NE, including arrivals at 125–1,800 ft at
   about 21 NM, and we decoded none of those. Flightradar24 showed the same. RYR66PG, climbing
@@ -105,6 +109,88 @@ Replaying the 3.1-hour capture and binning every position fix by bearing from th
   Our decode matched adsb.lol to within 100 ft, 3 kt and 0.1° of track.
 - The test page now draws this as a **coverage outline**: the furthest fix in each 10° sector,
   red on the map. It shows the gaps while the receiver runs.
+
+### Overnight run (25 Oct 22:40 → 26 Oct 09:30, same indoor site)
+10.9 hours with no dropouts: 346,368 frames, 105,382 good (30%), 11,244 position fixes from
+**344 aircraft**, and only 1 position rejected as implausible. Max range was 43.3 NM, to the
+east.
+
+| Sector | Fixes | Aircraft | Max NM | Median alt ft | Lowest alt ft |
+|---|---|---|---|---|---|
+| N | 246 | 48 | 13.2 | 28,875 | 3,800 |
+| NE | 972 | 121 | 18.4 | 24,000 | 3,275 |
+| E | 3,244 | 185 | **43.3** | 17,325 | 3,050 |
+| SE | 2,003 | 167 | 30.7 | 28,950 | 8,875 |
+| S | 2,660 | 178 | 33.7 | 30,625 | 9,150 |
+| SW | 1,250 | 137 | 27.4 | 34,000 | 5,375 |
+| W | 681 | 88 | 21.5 | 28,150 | 4,200 |
+| NW | 188 | 40 | 10.2 | 28,750 | 5,450 |
+
+- **The first likely Farnborough traffic.** The 12 lowest aircraft of the night were all
+  business jets, mostly in two clusters: **3,050–3,700 ft, 3.6–6 NM east-north-east of the
+  antenna** (about 5–6 NM from EGLF) and **4,200–5,200 ft, about 3–4 NM west**. Callsigns
+  include VistaJet (VJT480), NetJets Europe (NJE780G), US-registered N700KS and N606SG, and
+  Isle of Man-registered M-ABGS. That's the typical Farnborough mix, caught once the aircraft
+  have climbed to about 3,000 ft or above and are clear of the building's shadow.
+- **Still nothing below 3,000 ft.** No aircraft at 0–2,000 ft and 7 at 2,000–4,000 ft. Final
+  approaches, initial climbs and anything on the ground at EGLF (north of us) aren't received.
+- **Live comparison (26 Oct, about 09:35)** against adsb.lol within 12 NM of EGLF: we heard 1 of
+  the 4 airborne aircraft (RYR6VG, to the SW). We missed BAW29C at 10,800 ft 3.7 NM NE of EGLF,
+  BAW14K at 13,000 ft to the NW, VIR135G at 7,850 ft to the N, and all 4 targets on the ground
+  at EGLF. Even mid-level traffic to the north is unreliable from this site.
+- North improved overnight to 13.2 NM max and 3,800 ft lowest, from 8 NM and 18,000 ft in the
+  first evening. That's more samples, not better reception; NW is still the weakest sector.
+- *Capture limitation:* the `--save` file has no timestamps, so time of day can't be recovered
+  (the replay assumes an even message rate). Timestamped saves are a small follow-up.
+
+### Indoor siting tests (26 Oct), scored against adsb.lol
+Each test is the share of adsb.lol's airborne aircraft within 30 NM that we also heard, using
+the test page's *Heard vs adsb.lol* panel with one query every 2 minutes. An aircraft counts
+once per query. The tests ran one after another, so the time of day differs between them.
+
+| Share heard | Office, downstairs, S window | Studio, downstairs, N window | **Bathroom, upstairs, N window** | Bedroom, upstairs, S window |
+|---|---|---|---|---|
+| Antenna height | sill | sill | **just under the ceiling** | on the floor |
+| When | 09:39–10:10 | 10:10–12:34 | 12:34–15:34 | 15:34–19:33 |
+| **All** | 13% (63/475) | 22% (467/2078) | **28%** (679/2466) | 21% (604/2852) |
+| N | 5% | 13% | 16% | 14% |
+| NE (Heathrow) | 4% | 8% | 9% | 9% |
+| NW | 6% | 21% | 25% | 19% |
+| S | 45% | 55% | **68%** | 42% |
+| Below 3,000 ft | 0/130 | 0/463 | 5/578 (1%) | 2/838 (0%) |
+| 3,000–10,000 ft | 5% | 7% | 9% | 7% |
+| 10,000–20,000 ft | 25% | 35% | 41% | 34% |
+| Above 20,000 ft | 33% | 50% | 59% | 57% |
+
+**Time-of-day check:** the office position repeated at 19:39–21:00 scored **12%** (77/650), against
+13% in the morning. N was 3%, S 37%, below 3,000 ft 0/186. So the differences between positions
+are real, not the time of day. This was the last laptop test; the dongle then moved to the Pi.
+
+**The site:** trees on all sides. The house sits high, with the land sloping away to the south,
+and there is limited visibility behind it to the north. No direction has a clear line to the
+horizon.
+
+- **Antenna height decides the score, not window direction.** The bathroom (antenna near the
+  ceiling) was best in every direction, including south. The bedroom faces south, but with the
+  antenna on the floor it scored like downstairs.
+- **The north is blocked by trees, and possibly by the ground behind the house, not by which
+  window is used.** North scored 13–16% from every position after the office, and 3,000–10,000 ft
+  to the north stayed near zero (e.g. 2/140 from the bedroom). Low traffic towards EGLF, 4.8 NM
+  at about 003° and a degree or two above the horizon, has to pass through the full depth of
+  tree cover.
+- **The south slope is why south is best everywhere** (43 NM maximum range).
+- **No indoor position gets below 3,000 ft:** 7 sightings out of more than 2,000 at that level.
+- Some of the bedroom's lower score is the time of day: 29% of its sightings were below
+  3,000 ft, against 23% for the bathroom. Adjusted to the bathroom's altitude mix it would be
+  about 24%, so still below the bathroom.
+- **Seasonal effect to check:** leaves absorb 1090 MHz signals, more when wet. If the trees are
+  mostly deciduous, re-run these tests in mid-winter, when coverage should be at its best.
+
+**Conclusion for siting:** this site is a useful general feeder, especially for traffic to the
+south and at mid and high levels. **To see Farnborough's low traffic, the antenna has to get
+above the trees to the north.** A gable or chimney mount clears the house but probably not
+mature trees. So the realistic options are a tall mast, or a second receiver at a site with a
+clear view towards EGLF.
 
 ### What R0 tells us
 1. **Reception works**, and the decoded data matches the aggregators. The hardware chain and
@@ -132,7 +218,18 @@ Replaying the 3.1-hour capture and binning every position fix by bearing from th
 Use the test receiver's figures (**good msgs/s**, **max range**, **CRC pass %**) to compare
 changes one at a time. Record each run with `--save` so it can be replayed.
 - [x] Real antenna location set (in `receiver/station.json`) so ranges and bearings are correct.
-- [ ] **Siting first: find a view to the north.** Compare the coverage outline and lowest
+- [x] **Scoring tool:** the test page's *Heard vs adsb.lol* panel gives the share of
+      adsb.lol's nearby aircraft that we also heard, by direction and altitude band, in named
+      test sessions. It makes one query per 2 minutes, with backoff (see `receiver/README.md`).
+      First reading, window site, 26 Oct about 10:10: **23% overall, 0% below 3,000 ft, 0% N
+      and NE**.
+- [x] **Indoor siting tested** (four positions, see *Indoor siting tests* above). The best is
+      upstairs with the antenna high, but nothing indoors sees below 3,000 ft or clears the
+      trees to the north. Remaining checks: a window-open test at any window that opens (does
+      the glass matter? The bathroom window is fixed), HeyWhatsThat for the terrain to the
+      north, and a winter re-test.
+- [ ] *(Original aim, now known to need an outdoor antenna or another site.)*
+      **Siting first: find a view to the north.** Compare the coverage outline and lowest
       altitude decoded in each spot: a north-facing window, the loft (the roof tiles are
       usually much less of a barrier than walls), then outdoors on the north side. The aim is
       fixes below 2,000 ft in the N sector, i.e. Farnborough traffic.
@@ -156,24 +253,76 @@ changes one at a time. Record each run with `--save` so it can be replayed.
       built in. Keep the V3 for general SDR use. *(Compare current models and prices before
       buying.)*
 
-### R3 — Raspberry Pi receiver
-- [ ] Pi with a good power supply, the V3 (or ADS-B dongle) and the R2 antenna.
-- [ ] Software stack: **readsb** (decoder) + **tar1090** (map) + **graphs1090** (performance
-      graphs). The adsb.im image sets these up and configures feeds from a web UI; the manual
-      alternative is wiedehopf's install scripts. *(Pick one when we get there.)*
-- [ ] Use the same gain approach as R1 (readsb has automatic gain tuning; check graphs1090 after
-      a few days).
-- [ ] Point the test page at the Pi's `aircraft.json` to confirm the format matches.
+### R3 — Raspberry Pi receiver 🟡 running (26 Oct 2026)
+**Hardware:** an existing **Raspberry Pi 3 Model B+** (quad-core 1.4 GHz, 1 GB RAM, Ethernet and
+Wi-Fi) with the RTL-SDR Blog V3. That's plenty for readsb, tar1090, graphs1090 and a handful of
+feeds. adsb.im lists the "Pi Model 3 A+/B(+)" as actively tested and the V3 as a good ADS-B dongle.
+Its one caveat is that a Pi 3 is *"more likely to exhibit some MLAT instability"*, which is one
+reason to keep the number of MLAT feeds small (R4).
 
-### R4 — Feed the aggregators
-- [ ] **airplanes.live** and **adsb.lol** first: they're non-profit and the app already uses
-      them. Both take a readsb network feed, and **mlat-client** for MLAT (locating aircraft
-      that have no ADS-B by timing replies across several receivers).
-- [ ] Optional: ADS-B Exchange, FlightAware, Flightradar24. The commercial ones give feeders
-      perks such as premium accounts. *(Check their current terms.)*
-- [ ] **Privacy:** MLAT needs the exact antenna location and height. The aggregators blur it on
-      public maps, but they hold the exact figure. Decide which feeds get MLAT.
-- [ ] Check our station appears on each aggregator's feeder status page.
+- [x] **Software: the adsb.im image** (v3.0.15 at setup). It bundles readsb, tar1090 and
+      graphs1090, plus the feed clients, all set up from a web UI.
+  - Setup and status: `http://adsb-feeder.local/` (System → Management for Wi-Fi, authentication
+    and container restarts; Data Sharing for feeds).
+  - Map: `http://adsb-feeder.local:8080/`. Aircraft data:
+    `http://adsb-feeder.local:8080/data/aircraft.json`, in the same layout as our test page.
+  - Antenna location and height are entered in its setup. They stay on the Pi, not in this repo.
+- [ ] **Turn on web UI authentication** (System → Management → *Enable Authentication*). It's off
+      by default, so anyone on the home network can change settings.
+- [ ] **Placement:** upstairs bathroom, antenna **as high as possible** (just under the ceiling,
+      the best indoor result). The dongle goes on a **short USB extension (20–50 cm)** to keep it
+      clear of the Pi's own noise; the V3 is also too wide to sit beside the Pi's other USB ports.
+- [ ] **Power: PoE (power over Ethernet)** from the existing PoE switch. There's no socket in the
+      bathroom (UK rules keep them away from baths and showers). One cable gives power and a
+      wired network, and the same setup carries over to an outdoor antenna later.
+  - **The switch must be standard PoE, 802.3af or 802.3at**, not "passive" PoE (e.g. older 24 V
+    Ubiquiti gear), which can damage devices. Use a port that actually supplies PoE. The load is
+    only about 3–5 W (the Pi plus the dongle), well within any PoE budget.
+  - **Preferred: a PoE splitter**, 802.3af in, **micro-USB 5 V ≥ 2.4 A** out. It's cheap and
+    silent, keeps heat off the Pi, and keeps its power converter away from the radio.
+  - **Alternative: the official PoE HAT or PoE+ HAT** (check the listing says 3B+). It's tidier,
+    but has a small fan, adds heat in the case, and puts a power converter right on the board.
+  - Cat5e/Cat6 is fine up to 100 m, so later the Pi can sit right at an outdoor antenna, with a
+    short coax lead and the long run done in network cable.
+  - Once it's wired, turn Wi-Fi off; the saved Wi-Fi details can stay as a fallback. The image's
+    hotspot fallback (on by default) lets you fix network settings if the Pi ever has no
+    network.
+- [ ] **Power options rejected:** the bathroom shaver socket (rated only for shavers and
+      toothbrushes), a mains extension into the bathroom, and a power bank for permanent use
+      (very roughly 12–18 h from 20,000 mAh, and many briefly cut power while charging, which
+      reboots the Pi). Solar is overkill unless there's no mains at all. *Interim option:* Pi on
+      the landing by a socket, with a 5 m **active** USB extension to the dongle in the bathroom.
+- [ ] Gain: start with readsb's automatic gain, then check graphs1090 after a few days.
+- [ ] Point the test page's *Heard vs adsb.lol* scoring at the Pi's `aircraft.json`, so it can be
+      compared directly with the laptop tests (R1).
+
+**Parts list:** Pi 3B+ ✅, RTL-SDR Blog V3 ✅, PoE switch ✅, microSD card ✅ (name-brand; a bigger
+card lasts longer because writes are spread out), short USB extension, 802.3af PoE splitter with
+micro-USB output (or a PoE HAT), Cat5e/6 cable to the switch, and a case. Later, for outdoors: a
+weatherproof box, an outdoor 1090 MHz antenna, a short low-loss coax lead, and **surge protection
+and earthing** for the mast and the coax or network cable.
+
+### R4 — Feed the aggregators 🟡 feeding (26 Oct 2026)
+Setup's *All* quick-select had enabled about 22 account-less feeds, with MLAT on and the privacy
+flag off. That was trimmed down: each MLAT feed runs its own MLAT client, which is a load on a
+Pi 3 and the likely trigger for its known MLAT instability, and most of the long tail re-share
+the same community data.
+
+- [x] **adsb.lol**: data good. MLAT showed *disconnected* just after the change. *(Re-check;
+      if it persists, toggle MLAT or restart its container.)*
+- [x] **airplanes.live**: data good, MLAT good. A personal map link
+      (`globe.airplanes.live/?uuid=…`) is on the Pi's homepage. *(Kept out of this repo.)*
+- [x] **adsb.fi**: data good, MLAT good.
+- [x] **Privacy flag ON**: the station doesn't appear on public aggregator maps. MLAT servers
+      still receive the exact location, which MLAT needs.
+- [ ] **1090MHz UK**: needs a sharing key, requested by email to info@1090mhz.uk on 26 Oct. Paste
+      it into Data Sharing when it arrives. Also ask whether "MLAT UK" (on under *All*, and
+      possibly unticked by *Individual*) is part of 1090MHz UK, and re-enable it if so.
+- [ ] Optional: ADS-B Exchange (large, but commercially owned and less open now), and
+      Flightradar24 / FlightAware (accounts and keys needed, but they give free premium
+      accounts; FR24 Business is useful since we already use Flightradar).
+- [ ] Watch whether feeding changes airplanes.live's earlier HTTP 403 response to us, and the
+      adsb.lol rate limits (`RECORDING-PAUSE.md`).
 
 ### R5 — Use our receiver in Fight or Flight
 - [ ] Expose the Pi's `aircraft.json` safely: a Cloudflare Tunnel from the Pi, or the Pi pushing

@@ -384,22 +384,39 @@ def run_replay(decoder: Decoder, path: Path, rate: float) -> None:
 
 # ---------------------------------------------------------------- web server
 
-def make_handler(decoder: Decoder):
+def make_handler(decoder: Decoder, comparator):
     class Handler(SimpleHTTPRequestHandler):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, directory=str(HERE / "web"), **kwargs)
 
+        def _json(self, obj, status: int = 200) -> None:
+            body = json.dumps(obj).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
         def do_GET(self):
-            if self.path.split("?")[0] == "/data/aircraft.json":
-                body = json.dumps(decoder.snapshot()).encode()
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Cache-Control", "no-store")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
+            path = self.path.split("?")[0]
+            if path == "/data/aircraft.json":
+                self._json(decoder.snapshot())
+            elif path == "/data/compare.json":
+                self._json(comparator.snapshot() if comparator else {"disabled": True})
             else:
                 super().do_GET()
+
+        def do_POST(self):
+            if self.path != "/data/compare/reset" or not comparator:
+                return self._json({"error": "not found"}, 404)
+            length = min(int(self.headers.get("Content-Length") or 0), 1000)
+            try:
+                label = json.loads(self.rfile.read(length) or b"{}").get("label", "")
+            except ValueError:
+                label = ""
+            comparator.reset(str(label))
+            self._json({"ok": True})
 
         def log_message(self, *args):
             pass
@@ -417,6 +434,8 @@ def main() -> None:
     p.add_argument("--save", type=Path, help="append raw frames to this file for later replay")
     p.add_argument("--replay", type=Path, help="decode a saved capture instead of the dongle")
     p.add_argument("--rate", type=float, default=15, help="replay speed, frames per second")
+    p.add_argument("--compare-every", type=float, default=120, metavar="SECONDS",
+                   help="score against adsb.lol this often (min 60, 0 = off; default 120)")
     args = p.parse_args()
     station = HERE / "station.json"
     if station.exists() and args.lat == EGLF[0] and args.lon == EGLF[1]:
@@ -434,7 +453,14 @@ def main() -> None:
                                   args=(decoder, args.rtl_adsb, args.gain, args.save))
     source.start()
 
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(decoder))
+    comparator = None
+    if args.compare_every and not args.replay:
+        from compare import Comparator
+        comparator = Comparator(decoder, args.compare_every, HERE / "captures" / "compare-sessions.jsonl")
+        threading.Thread(target=comparator.run, daemon=True).start()
+        print(f"Comparing with adsb.lol every {comparator.interval_s:.0f} s", flush=True)
+
+    server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(decoder, comparator))
     print(f"Open http://localhost:{args.port}  (Ctrl+C to stop)", flush=True)
     try:
         server.serve_forever()
