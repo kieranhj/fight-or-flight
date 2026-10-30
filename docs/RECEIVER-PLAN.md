@@ -4,9 +4,8 @@ aggregators, and eventually use it as a first-hand data source for Fight or Flig
 
 > **Status (26 Oct 2026):** R0 (laptop proof of reception) ✅ and R1's indoor siting tests ✅
 > are done. **R3: a Raspberry Pi 3B+ running the adsb.im image is decoding**, and **R4: it is
-> feeding adsb.lol, airplanes.live and adsb.fi** with the privacy flag on. Next: PoE power and a
-> high bathroom placement, the 1090MHz UK key, then an outdoor antenna or another site with a
-> view north. The laptop test receiver is in [`../receiver/`](../receiver/README.md).
+> feeding adsb.lol, airplanes.live, adsb.fi and 1090MHz UK** with the privacy flag on. Next: PoE
+> power and a high bathroom placement, then an outdoor antenna or another site with a view north. The laptop test receiver is in [`../receiver/`](../receiver/README.md).
 
 ---
 
@@ -315,9 +314,8 @@ the same community data.
 - [x] **adsb.fi**: data good, MLAT good.
 - [x] **Privacy flag ON**: the station doesn't appear on public aggregator maps. MLAT servers
       still receive the exact location, which MLAT needs.
-- [ ] **1090MHz UK**: needs a sharing key, requested by email to info@1090mhz.uk on 26 Oct. Paste
-      it into Data Sharing when it arrives. Also ask whether "MLAT UK" (on under *All*, and
-      possibly unticked by *Individual*) is part of 1090MHz UK, and re-enable it if so.
+- [x] **1090MHz UK**: data online since 30 Oct, with the sharing key they emailed (kept out of
+      this repo). Their MLAT is still a work in progress; switch it on when they launch it.
 - [ ] Optional: ADS-B Exchange (large, but commercially owned and less open now), and
       Flightradar24 / FlightAware (accounts and keys needed, but they give free premium
       accounts; FR24 Business is useful since we already use Flightradar).
